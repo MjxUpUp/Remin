@@ -24,7 +24,8 @@ var evalRunCmd = &cobra.Command{
 	Use:   "run [--suite trust|roundtrip|all] [--out file]",
 	Short: "运行评测（沙盒 fixture，不碰真源数据）",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		reps, err := eval.Run(evalFlags.suite)
+		bin, _ := os.Executable() // parity 套件实跑 MCP stdio 通道需要真实二进制
+		reps, err := eval.Run(evalFlags.suite, bin)
 		if err != nil {
 			return fail(err)
 		}
@@ -40,7 +41,7 @@ var evalRunCmd = &cobra.Command{
 				return fail(err)
 			}
 		}
-		return output(func() {
+		if err := output(func() {
 			for _, r := range reps {
 				status := "通过 ✓"
 				if !r.Passed {
@@ -59,9 +60,15 @@ var evalRunCmd = &cobra.Command{
 				fmt.Printf("报告已写入 %s\n", evalFlags.out)
 			}
 			if !allPassed {
-				fmt.Println("存在失败项")
+				fmt.Println("存在失败项（退出码 1）")
 			}
-		}, reps)
+		}, reps); err != nil {
+			return err
+		}
+		if !allPassed {
+			return SilentExit{1} // 报告已输出；失败以退出码阻断脚本化使用
+		}
+		return nil
 	},
 }
 

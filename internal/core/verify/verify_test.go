@@ -53,6 +53,9 @@ func TestRunFailedExpiresAndBumpsVersion(t *testing.T) {
 	if err := st.WriteVersion(1); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.GitCommit(st.Root, "fixture: v1"); err != nil {
+		t.Fatal(err)
+	}
 	outcomes, err := Run(st, audit.New(st), "mem_V", "")
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +90,9 @@ func TestRunUnknownNoBump(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := st.WriteVersion(3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GitCommit(st.Root, "fixture: v3"); err != nil {
 		t.Fatal(err)
 	}
 	outcomes, err := Run(st, audit.New(st), "mem_U", "")

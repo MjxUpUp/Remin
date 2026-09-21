@@ -65,18 +65,15 @@ func detectClaudeCode(home, binPath string) AgentStatus {
 	if !s.Installed {
 		return s
 	}
-	if data, err := os.ReadFile(global); err == nil {
-		var cfg map[string]any
-		if json.Unmarshal(data, &cfg) == nil {
-			servers, _ := cfg["mcpServers"].(map[string]any)
-			switch ent := servers["memory"].(type) {
-			case map[string]any:
-				if cmd, _ := ent["command"].(string); cmd == binPath {
-					s.Wired = true
-				} else {
-					s.Conflicted = true
-					s.Note = "存在同名 memory server（--takeover 替换）"
-				}
+	if cfg := readJSONObjectLenient(global); cfg != nil {
+		servers, _ := cfg["mcpServers"].(map[string]any)
+		switch ent := servers["memory"].(type) {
+		case map[string]any:
+			if cmd, _ := ent["command"].(string); cmd == binPath {
+				s.Wired = true
+			} else {
+				s.Conflicted = true
+				s.Note = "存在同名 memory server（--takeover 替换）"
 			}
 		}
 	}
@@ -86,7 +83,10 @@ func detectClaudeCode(home, binPath string) AgentStatus {
 // InstallClaudeCode ~/.claude.json 注册 MCP + ~/.claude/settings.json 注册两会话 hook
 func InstallClaudeCode(home, binPath string, takeover bool) error {
 	global := filepath.Join(home, ".claude.json")
-	cfg := readJSONObject(global)
+	cfg, err := readJSONObject(global)
+	if err != nil {
+		return err
+	}
 	servers, _ := cfg["mcpServers"].(map[string]any)
 	if servers == nil {
 		servers = map[string]any{}
@@ -103,7 +103,10 @@ func InstallClaudeCode(home, binPath string, takeover bool) error {
 	}
 
 	settingsPath := filepath.Join(home, ".claude", "settings.json")
-	sc := readJSONObject(settingsPath)
+	sc, err := readJSONObject(settingsPath)
+	if err != nil {
+		return err
+	}
 	hooks, _ := sc["hooks"].(map[string]any)
 	if hooks == nil {
 		hooks = map[string]any{}
@@ -212,7 +215,10 @@ func tomlSection(body, section string) []byte {
 // ── cursor / gemini-cli（JSON mcpServers）────────────────────────────────────
 
 func installJSONMCPServers(path string, binPath string, takeover bool) error {
-	cfg := readJSONObject(path)
+	cfg, err := readJSONObject(path)
+	if err != nil {
+		return err
+	}
 	servers, _ := cfg["mcpServers"].(map[string]any)
 	if servers == nil {
 		servers = map[string]any{}
@@ -241,11 +247,7 @@ func detectJSONMCPServer(agent, path, binPath string) AgentStatus {
 	if !s.Installed {
 		return s
 	}
-	data, _ := os.ReadFile(path)
-	var cfg map[string]any
-	if json.Unmarshal(data, &cfg) != nil {
-		return s
-	}
+	cfg := readJSONObjectLenient(path)
 	servers, _ := cfg["mcpServers"].(map[string]any)
 	if ent, ok := servers["memory"].(map[string]any); ok {
 		if cmd, _ := ent["command"].(string); cmd == binPath {
@@ -325,13 +327,28 @@ func nowStamp() string { return timeNow().Format("20060102T150405") }
 
 var timeNow = func() time.Time { return time.Now() }
 
-// readJSONObject 读 JSON 对象（缺失/损坏返回空 map，绝不因现有配置损坏而中断接线）
-func readJSONObject(path string) map[string]any {
+// readJSONObject 读 JSON 对象（缺失返回空 map；损坏返回错误——绝不把用户现有
+// 配置吞成空 map 后整体覆写，违反"键级合并只增不删"的承诺）
+func readJSONObject(path string) (map[string]any, error) {
 	cfg := map[string]any{}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return cfg
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return nil, err
 	}
-	_ = json.Unmarshal(data, &cfg)
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("现有配置 %s 损坏（非 JSON）：%w——拒绝覆写，请先修复或删除", path, err)
+	}
+	return cfg, nil
+}
+
+// readJSONObjectLenient 检测场景容错读取（损坏视为无配置，只读不写）
+func readJSONObjectLenient(path string) map[string]any {
+	cfg, err := readJSONObject(path)
+	if err != nil {
+		return map[string]any{}
+	}
 	return cfg
 }

@@ -79,7 +79,9 @@ func TestMineExtractsWithLineRefs(t *testing.T) {
 	if !sawProcedural || !sawDecision || !sawRecap {
 		t.Errorf("应挖出程序性/决策/recap 候选: %+v", cands)
 	}
-	_ = sawLesson
+	if !sawLesson {
+		t.Errorf("应挖出教训类候选: %+v", cands)
+	}
 }
 
 // 断点续挖：追加行后重挖只提取增量；无变化则零产出（幂等）

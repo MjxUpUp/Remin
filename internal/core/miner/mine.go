@@ -40,7 +40,41 @@ type Report struct {
 
 // Mine 执行挖矿：发现 → 解析（增量游标）→ 提取 → inbox 批次（→ 快速档 recap 自动生效）。
 // ctx 到期后不再开新文件（已处理的照常收尾）——开场追赶的硬预算降级点。
+// 变更段（游标/队列/批次落盘）在 WithRoot 互斥下执行；快速档自动提升在锁外
+// （promotion 自带互斥，避免嵌套自锁）。
 func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options) (*Report, error) {
+	rep := &Report{}
+	if err := store.WithRoot(st.Root, func() error {
+		r, err := mineLocked(ctx, st, cfg, opts)
+		if err != nil {
+			return err
+		}
+		*rep = *r
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 快速档（FR-GOV-3）：仅 ephemeral recap 自动生效，trust 保持 unverified，永不盖章
+	if cfg != nil && cfg.Autonomy == config.AutonomyFast && rep.Batch != "" {
+		var recapIDs []string
+		cands, _ := inbox.New(st).ListCandidates(rep.Batch)
+		for _, c := range cands {
+			if c.Expires != "" {
+				recapIDs = append(recapIDs, c.ID)
+			}
+		}
+		if len(recapIDs) > 0 {
+			res, err := promotion.Promote(st, inbox.New(st), audit.New(st), promotion.Request{CandidateIDs: recapIDs, Auto: true})
+			if err == nil {
+				rep.AutoPromoted = len(res.MemoryIDs)
+			}
+		}
+	}
+	return rep, nil
+}
+
+func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts Options) (*Report, error) {
 	if opts.ClaudeDir == "" {
 		opts.ClaudeDir = DefaultClaudeDir()
 	}
@@ -78,7 +112,8 @@ func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options
 		fromLine := 1
 		if !opts.Force {
 			if cur, ok := cursors.Get(path); ok && !cursors.NeedMine(path, info.Size()) {
-				continue // 无增量
+				mined[path] = true // 无增量也视为已处理：出队，防队列泄漏
+				continue
 			} else if ok && cur.Lines > 0 && info.Size() >= cur.Size {
 				fromLine = cur.Lines + 1 // 断点续挖
 			}
@@ -123,23 +158,6 @@ func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options
 		return nil, err
 	}
 	rep.Batch = batch
-
-	// 快速档（FR-GOV-3）：仅 ephemeral recap 自动生效，trust 保持 unverified，永不盖章
-	if cfg != nil && cfg.Autonomy == config.AutonomyFast {
-		var recapIDs []string
-		cands, _ := in.ListCandidates(batch)
-		for _, c := range cands {
-			if c.Expires != "" {
-				recapIDs = append(recapIDs, c.ID)
-			}
-		}
-		if len(recapIDs) > 0 {
-			res, err := promotion.Promote(st, in, audit.New(st), promotion.Request{CandidateIDs: recapIDs, Auto: true})
-			if err == nil {
-				rep.AutoPromoted = len(res.MemoryIDs)
-			}
-		}
-	}
 	return rep, nil
 }
 

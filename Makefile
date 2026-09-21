@@ -18,6 +18,7 @@ vet:
 constitution:
 	go test ./internal/core/eval/ -run 'TestConstitution' -v
 	scripts/check-deps.sh
+	scripts/adapter-budget.sh
 
 # 适配器预算（P1-N2）：全部 ≤20%、单个 ≤8%
 adapter-budget:

@@ -160,28 +160,42 @@ type errFake struct{}
 
 func (errFake) Error() string { return "fake" }
 
-// 候选非法（缺 provenance）→ 整批拒绝，无任何落盘
+// 候选非法（绕过 AddBatch 校验直写文件——模拟外部篡改/损坏）→ promote 拒绝且无部分落盘
 func TestPromoteInvalidCandidateNoPartialState(t *testing.T) {
 	st, in, au := fixture(t)
-	bad := cand("没有来源的记忆", "")
-	bad.Provenance = store.Provenance{}
 	good := cand("正常记忆", "")
-	batch, ids, err := in.AddBatch("mine", []*inbox.Candidate{bad, good})
+	batch, ids, err := in.AddBatch("mine", []*inbox.Candidate{good})
 	if err != nil {
-		// AddBatch 内有 Validate，非法候选应在这里就被拦下
-		if ids != nil {
-			t.Fatal("非法候选不应入库")
-		}
-		return
+		t.Fatal(err)
 	}
-	_ = batch
+	// 直接改写候选文件：抹掉 provenance.origin（绕过 AddBatch 的入队校验）
+	candPath := filepath.Join(st.Root, "inbox", "candidates", ids[0]+".md")
+	data, err := os.ReadFile(candPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(data), "origin: claude-code", "origin: \"\"", 1)
+	if tampered == string(data) {
+		t.Fatalf("候选文件格式与预期不符，无法构造篡改夹具:\n%s", data)
+	}
+	if err := os.WriteFile(candPath, []byte(tampered), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := Promote(st, in, au, Request{CandidateIDs: ids}); err == nil {
-		t.Fatal("应拒绝")
+		t.Fatal("非法候选（provenance 不齐）应拒绝")
 	}
 	ms, _ := st.ListMemories()
 	if len(ms) != 0 {
 		t.Errorf("不应有任何记忆落盘: %d", len(ms))
 	}
+	if v, _ := st.Version(); v != 0 {
+		t.Errorf("版本不应推进: %d", v)
+	}
+	out, _ := store.GitRun(st.Root, "status", "--porcelain")
+	if strings.Contains(out, "memory/") || strings.Contains(out, "VERSION") {
+		t.Errorf("关键路径不应有半提交残留: %q", out)
+	}
+	_ = batch
 }
 
 func TestRejectArchives(t *testing.T) {

@@ -6,6 +6,7 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/remin-dev/remin/internal/core/audit"
@@ -16,9 +17,35 @@ import (
 	"github.com/remin-dev/remin/internal/store"
 )
 
-// session 会话态：快照钉住（FR-READ-2：开场钉住版本，会话内检索服务该快照）
+// session 会话态：快照钉住（FR-READ-2：开场钉住版本，会话内检索服务该快照）。
+// MCP 客户端可能并发调用工具（同一 server 进程多 in-flight 请求）——
+// pinned 与索引缓存都在 mu 保护下读写；缓存按版本失效。
 type session struct {
-	pinned int
+	mu       sync.Mutex
+	pinned   int
+	root     string
+	cacheVer int
+	cache    *search.Searcher
+}
+
+// searcherFor 取钉住版本的检索器（缓存命中零重建；refresh 后自动失效）
+func (s *session) searcherFor() (*search.Searcher, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cache != nil && s.cacheVer == s.pinned {
+		return s.cache, nil
+	}
+	st, err := store.Open(s.root)
+	if err != nil {
+		return nil, err
+	}
+	idx, err := index.Ensure(st, s.pinned)
+	if err != nil {
+		return nil, fmt.Errorf("快照 v%d 不可用: %w", s.pinned, err)
+	}
+	sr := search.New(idx)
+	s.cache, s.cacheVer = sr, s.pinned
+	return sr, nil
 }
 
 // NewMCPServer 构造 MCP server；stdio 传输由客户端拉起（remin mcp）
@@ -26,7 +53,7 @@ func NewMCPServer(root string) (*mcp.Server, error) {
 	if _, err := store.Open(root); err != nil {
 		return nil, err
 	}
-	sess := &session{}
+	sess := &session{root: root}
 	if st, err := store.Open(root); err == nil {
 		if v, err := st.Version(); err == nil {
 			sess.pinned = v
@@ -51,15 +78,11 @@ func NewMCPServer(root string) (*mcp.Server, error) {
 		Name:        "memory_search",
 		Description: "检索用户记忆。返回的每条结果携带 trust（人审/agent断言/未验证）、provenance（来源）与 verify_result；置信不足时 abstained=true（宁可不知道，请向用户确认而非编造）。",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in searchIn) (*mcp.CallToolResult, searchOut, error) {
-		st, err := store.Open(root)
+		sr, err := sess.searcherFor()
 		if err != nil {
 			return nil, searchOut{}, err
 		}
-		idx, err := index.Ensure(st, sess.pinned)
-		if err != nil {
-			return nil, searchOut{}, fmt.Errorf("快照 v%d 不可用: %w", sess.pinned, err)
-		}
-		r := search.New(idx).Search(in.Query, search.Options{Facet: in.Facet, TopK: in.TopK})
+		r := sr.Search(in.Query, search.Options{Facet: in.Facet, TopK: in.TopK})
 		return nil, searchOut{Results: r.Hits, Abstained: r.Abstained, Reason: r.Reason, IndexVersion: r.IndexVersion}, nil
 	})
 
@@ -196,7 +219,10 @@ func NewMCPServer(root string) (*mcp.Server, error) {
 		if err != nil {
 			return nil, refreshOut{}, err
 		}
+		sess.mu.Lock()
 		sess.pinned = v
+		sess.cache = nil // 快照推进：缓存失效
+		sess.mu.Unlock()
 		return nil, refreshOut{IndexVersion: v}, nil
 	})
 

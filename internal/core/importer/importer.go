@@ -212,16 +212,22 @@ func Import(st *store.Store, source, path string, apply bool, home string) (*Rep
 	if !apply || len(cands) == 0 {
 		return rep, nil
 	}
-	batch, _, err := in.AddBatch("import:"+source, cands)
+	// 批次落盘 + 指纹台账 + 导入提交为一个临界区（互斥下 add -A 不会扫入并发半成品）
+	err = store.WithRoot(st.Root, func() error {
+		batch, _, err := in.AddBatch("import:"+source, cands)
+		if err != nil {
+			return err
+		}
+		rep.Batch = batch
+		if err := in.AppendFingerprints(fps); err != nil {
+			return err
+		}
+		if _, err := store.GitCommit(st.Root, fmt.Sprintf("import: %s 批次 %s（%d 条候选待审）", source, batch, len(cands))); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	rep.Batch = batch
-	if err := in.AppendFingerprints(fps); err != nil {
-		return nil, err
-	}
-	// 台账与批次为可审计变更，随下次审收提交；此处提交一次导入台账
-	if _, err := store.GitCommit(st.Root, fmt.Sprintf("import: %s 批次 %s（%d 条候选待审）", source, batch, len(cands))); err != nil {
 		return nil, err
 	}
 	return rep, nil

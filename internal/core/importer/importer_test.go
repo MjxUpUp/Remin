@@ -143,6 +143,9 @@ func TestConflictSuggestion(t *testing.T) {
 	if err := st.SaveMemory(old); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.GitCommit(st.Root, "fixture: 旧事实"); err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "new.md"), []byte("主力数据库是 Postgres"), 0o644)
 	rep, err := Import(st, SrcMarkdownDir, dir, true, "")

@@ -41,12 +41,48 @@ func Pull(st *store.Store) (string, error) {
 	if _, err := remoteOf(st); err != nil {
 		return "", err
 	}
-	// allow-unrelated-histories：两台设备各自 remin init 后首次同步是常态（init 骨架语义一致）
-	out, err := store.GitRun(st.Root, "pull", "--no-edit", "--no-rebase", "--allow-unrelated-histories", "origin", "main")
+	var out string
+	err := store.WithRoot(st.Root, func() error {
+		var err error
+		// allow-unrelated-histories：两台设备各自 remin init 后首次同步是常态（init 骨架语义一致）
+		out, err = store.GitRun(st.Root, "pull", "--no-edit", "--no-rebase", "--allow-unrelated-histories", "origin", "main")
+		return err
+	})
 	if err != nil {
-		return resolveVersionConflict(st, out, err)
+		// 仅当确实是合并冲突时才走冲突解析；其他失败（网络等）原样上报
+		if isMergeConflict(st) {
+			return resolveVersionConflict(st, out, err)
+		}
+		return "", err
 	}
 	return out, nil
+}
+
+// isUnmergedLine porcelain 行是否为未合并状态
+func isUnmergedLine(line string) bool {
+	for _, code := range []string{"AA ", "DD ", "AU ", "UD ", "UA ", "DU ", "UU "} {
+		if strings.HasPrefix(line, code) {
+			return true
+		}
+	}
+	return false
+}
+
+// isMergeConflict 工作区是否处于未合并状态（区分网络失败与真冲突）。
+// porcelain v1 未合并码全集：AA/DD/AU/UD/UA/DU/UU（unrelated histories 走 AA）。
+func isMergeConflict(st *store.Store) bool {
+	status, err := store.GitRun(st.Root, "status", "--porcelain")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(status, "\n") {
+		for _, code := range []string{"AA ", "DD ", "AU ", "UD ", "UA ", "DU ", "UU "} {
+			if strings.HasPrefix(line, code) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Push 推送
@@ -54,7 +90,13 @@ func Push(st *store.Store) (string, error) {
 	if _, err := remoteOf(st); err != nil {
 		return "", err
 	}
-	return store.GitRun(st.Root, "push", "-u", "origin", "main")
+	var out string
+	err := store.WithRoot(st.Root, func() error {
+		var err error
+		out, err = store.GitRun(st.Root, "push", "-u", "origin", "main")
+		return err
+	})
+	return out, err
 }
 
 // Sync 拉取 + 推送
@@ -73,7 +115,7 @@ func resolveVersionConflict(st *store.Store, out string, pullErr error) (string,
 	}
 	conflicted := []string{}
 	for _, line := range strings.Split(status, "\n") {
-		if strings.HasPrefix(line, "UU ") || strings.HasPrefix(line, "AA ") {
+		if isUnmergedLine(line) {
 			conflicted = append(conflicted, strings.TrimSpace(line[3:]))
 		}
 	}

@@ -116,33 +116,73 @@ func Restore(st *store.Store, bundleDir string) error {
 			return fmt.Errorf("哈希不符：%s（导出物被改动，拒绝还原）", rel)
 		}
 	}
-	// 阶段二：整体替换
-	for _, d := range exportedDirs {
-		if err := os.RemoveAll(filepath.Join(st.Root, d)); err != nil {
+	// 阶段二：原子换入（互斥临界区内）
+	// staging 池位于 transcripts-cache/（gitignore，不会被 add -A 扫入）：
+	//   stageNew = 导出物内容拷贝；stageOld = 现有真源三目录搬离暂存
+	// 任一步失败 → 搬回 stageOld，真源回到原状；成功 → 删除 stageOld 后提交。
+	return store.WithRoot(st.Root, func() error {
+		base := filepath.Join(st.Root, "transcripts-cache")
+		stageNew, err := os.MkdirTemp(base, ".restore-new-")
+		if err != nil {
 			return err
 		}
-	}
-	for _, rel := range paths {
-		dst := filepath.Join(st.Root, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		defer os.RemoveAll(stageNew)
+		for _, rel := range paths {
+			dst := filepath.Join(stageNew, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				return err
+			}
+			if err := copyFile(filepath.Join(bundleDir, filepath.FromSlash(rel)), dst); err != nil {
+				return err
+			}
+		}
+		stageOld, err := os.MkdirTemp(base, ".restore-old-")
+		if err != nil {
 			return err
 		}
-		src := filepath.Join(bundleDir, filepath.FromSlash(rel))
-		if err := copyFile(src, dst); err != nil {
+		success := false
+		defer func() {
+			if !success {
+				// 失败回滚：删掉半成品，搬回原内容
+				for _, d := range exportedDirs {
+					os.RemoveAll(filepath.Join(st.Root, d))
+				}
+				for _, d := range exportedDirs {
+					_ = os.Rename(filepath.Join(stageOld, d), filepath.Join(st.Root, d))
+				}
+			}
+			os.RemoveAll(stageOld)
+		}()
+		for _, d := range exportedDirs {
+			if err := os.Rename(filepath.Join(st.Root, d), filepath.Join(stageOld, d)); err != nil {
+				return err
+			}
+		}
+		for _, d := range exportedDirs {
+			if err := os.Rename(filepath.Join(stageNew, d), filepath.Join(st.Root, d)); err != nil {
+				return err
+			}
+		}
+		// VERSION 冲突取 max
+		local, _ := st.Version()
+		version := m.Version
+		if local > version {
+			version = local
+		}
+		if err := st.WriteVersion(version); err != nil {
 			return err
 		}
-	}
-	// VERSION 冲突取 max
-	local, _ := st.Version()
-	version := m.Version
-	if local > version {
-		version = local
-	}
-	if err := st.WriteVersion(version); err != nil {
-		return err
-	}
-	_, err = store.GitCommit(st.Root, fmt.Sprintf("restore: 整库还原自导出物（v%d，%d 文件，roundtrip 哈希一致）", version, len(paths)))
-	return err
+		success = true
+		// 内容与现库完全一致时无变更可提交——还原本身已成功，不视为失败
+		if dirty, err := store.GitRun(st.Root, "status", "--porcelain"); err == nil && strings.TrimSpace(dirty) == "" {
+			return nil
+		}
+		commitMsg := fmt.Sprintf("restore: 整库还原自导出物（v%d，%d 文件，roundtrip 哈希一致）", version, len(paths))
+		if _, err := store.GitCommit(st.Root, commitMsg); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func copyFileHash(src, dst string) (string, error) {

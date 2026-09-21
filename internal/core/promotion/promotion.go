@@ -66,11 +66,29 @@ type Result struct {
 	Superseded []string // 被替代退出检索的旧 id
 }
 
-// Promote 人审采纳（或快速档自动采纳）：单一原子提交
+// Promote 人审采纳（或快速档自动采纳）：单一原子提交。
+// WithRoot 提供进程内 + 跨进程互斥与脏树前置检查（并发 promote 的版本双分配、
+// supersession TOCTOU、add -A 扫入并发半成品，都在这里被串行化/拦截）。
 func Promote(st *store.Store, in *inbox.Inbox, au *audit.Audit, req Request) (*Result, error) {
 	if len(req.CandidateIDs) == 0 {
 		return nil, fmt.Errorf("未指定候选（--id 或 --batch ... --all）")
 	}
+	var res *Result
+	err := store.WithRoot(st.Root, func() error {
+		r, err := promoteLocked(st, in, au, req)
+		if err != nil {
+			return err
+		}
+		res = r
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func promoteLocked(st *store.Store, in *inbox.Inbox, au *audit.Audit, req Request) (*Result, error) {
 	actor, err := store.GitHasIdentity(st.Root)
 	if err != nil {
 		return nil, err
@@ -198,9 +216,9 @@ func Promote(st *store.Store, in *inbox.Inbox, au *audit.Audit, req Request) (*R
 			return err
 		}
 		res.Version = v + 1
-		// 审计
+		// 审计（Batch 必填——log --batch 按批次回看的落点）
 		if err := au.Append(audit.Record{
-			Actor: actor, Action: action, IDs: res.MemoryIDs,
+			Actor: actor, Action: action, IDs: res.MemoryIDs, Batch: strings.Join(mapKeys(batches), ","),
 			Version: res.Version, Note: req.Note,
 		}); err != nil {
 			return err
@@ -260,6 +278,22 @@ func Reject(st *store.Store, in *inbox.Inbox, au *audit.Audit, ids []string, not
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("未指定候选")
 	}
+	var res *Result
+	err := store.WithRoot(st.Root, func() error {
+		r, err := rejectLocked(st, in, au, ids, note)
+		if err != nil {
+			return err
+		}
+		res = r
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func rejectLocked(st *store.Store, in *inbox.Inbox, au *audit.Audit, ids []string, note string) (*Result, error) {
 	actor, err := store.GitHasIdentity(st.Root)
 	if err != nil {
 		return nil, err
@@ -279,7 +313,8 @@ func Reject(st *store.Store, in *inbox.Inbox, au *audit.Audit, ids []string, not
 
 	res := &Result{}
 	undo, err := Atomic(st.Root, touched, func() error {
-		if err := au.Append(audit.Record{Actor: actor, Action: audit.ActionReject, IDs: ids, Note: note}); err != nil {
+		if err := au.Append(audit.Record{Actor: actor, Action: audit.ActionReject, IDs: ids,
+			Batch: strings.Join(mapKeys(batches), ","), Note: note}); err != nil {
 			return err
 		}
 		for batchID, cids := range batches {

@@ -39,7 +39,11 @@ func Evaluate(condition string) (result, evidence string) {
 		p, text := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 		data, err := os.ReadFile(p)
 		if err != nil {
-			return store.VerifyFailed, fmt.Sprintf("不可读: %s", p)
+			if os.IsNotExist(err) {
+				return store.VerifyFailed, fmt.Sprintf("不存在: %s", p)
+			}
+			// 权限等不可读 ≠ 条件为假：宁可不知道，待人判
+			return store.VerifyUnknown, fmt.Sprintf("不可读（待人判）: %s", p)
 		}
 		if strings.Contains(string(data), text) {
 			return store.VerifyPassed, fmt.Sprintf("%s 含 %q", p, text)
@@ -62,6 +66,22 @@ type Outcome struct {
 // Run 对 id（或 all=全部带 verify 条件的记忆）执行验证并原子回写。
 // forced 非空时为人判覆盖（passed|failed）。
 func Run(st *store.Store, au *audit.Audit, idOrAll string, forced string) ([]Outcome, error) {
+	var outcomes []Outcome
+	err := store.WithRoot(st.Root, func() error {
+		o, err := runLocked(st, au, idOrAll, forced)
+		if err != nil {
+			return err
+		}
+		outcomes = o
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return outcomes, nil
+}
+
+func runLocked(st *store.Store, au *audit.Audit, idOrAll string, forced string) ([]Outcome, error) {
 	var targets []*store.Memory
 	if idOrAll == "all" {
 		ms, err := st.ListMemories()
@@ -105,10 +125,13 @@ func Run(st *store.Store, au *audit.Audit, idOrAll string, forced string) ([]Out
 		prev := m.Verify.Result
 		truthChanged := false
 		if prev != result {
-			// 结果改变检索真值：failed 退出检索（置 expired）；failed→passed 复活（active）
+			// 结果改变检索真值：failed 退出检索（置 expired）；failed→passed 复活（active）。
+			// superseded 是更强的终态：不被 verify 失效改写（链完整性优先）。
 			if result == store.VerifyFailed {
-				m.Status = store.StatusExpired
-				truthChanged = true
+				if m.Status == store.StatusActive {
+					m.Status = store.StatusExpired
+					truthChanged = true
+				}
 			} else if prev == store.VerifyFailed && result == store.VerifyPassed && m.Status == store.StatusExpired {
 				m.Status = store.StatusActive
 				truthChanged = true

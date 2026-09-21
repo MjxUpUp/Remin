@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/remin-dev/remin/internal/store"
 )
@@ -16,14 +17,16 @@ func AGENTS(st *store.Store, facet string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	now := store.NowTime()
-	_ = now
+	now := time.Now()
 	byType := map[string][]*store.Memory{}
 	for _, m := range ms {
 		if m.Status != store.StatusActive {
 			continue
 		}
 		if m.Verify != nil && m.Verify.Result == store.VerifyFailed {
+			continue
+		}
+		if m.ExpiredAt(now) { // 与 inject/search 同口径：过期 recap 不进视图
 			continue
 		}
 		if facet != "" && m.Facet != facet {

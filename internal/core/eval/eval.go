@@ -5,7 +5,6 @@ package eval
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -153,7 +152,9 @@ func buildFixture() (*store.Store, map[string]string, error) {
 		past := time.Now().AddDate(0, 0, -30).Format("2006-01-02T15:04:05-07:00")
 		m.ReviewedAt = past
 		m.CapturedAt = past
-		_ = st.SaveMemory(m)
+		if st.SaveMemory(m) == nil {
+			_, _ = store.GitCommit(st.Root, "fixture: ephemeral 过期时间回写")
+		}
 		// 刷新当前版本的持久化索引快照（否则检索仍按 promote 时的 fresh 时间判定）
 		if v, verr := st.Version(); verr == nil {
 			if ms, lerr := st.ListMemories(); lerr == nil {
@@ -206,10 +207,18 @@ func SuiteTrust() *Report {
 		g := s.Search("zzxxqq 完全无关词", search.Options{})
 		checks = append(checks, check("abstain_on_garbage", g.Abstained, g.Reason))
 
-		// 4. trust 分层随行（agent 必须知道自己吃到的是哪级记忆）
+		// 4. trust 分层随行（agent 必须知道自己吃到的是哪级记忆）——精确断言值，非仅非空
 		rA := s.Search("Rust 主力语言", search.Options{})
-		carried := len(rA.Hits) > 0 && rA.Hits[0].Trust != "" && rA.Hits[0].Provenance.Origin != ""
-		checks = append(checks, check("trust_and_provenance_carried", carried, "search 结果随行"))
+		carried := false
+		detail := "无命中"
+		if len(rA.Hits) > 0 {
+			h := rA.Hits[0]
+			want, ok := ids["active"]
+			carried = ok && h.ID == want && h.Trust == store.TrustHumanVerified &&
+				h.Provenance.Origin == "claude-code" && h.Provenance.Ref != ""
+			detail = fmt.Sprintf("id=%s trust=%s（应为 human-verified）", h.ID, h.Trust)
+		}
+		checks = append(checks, check("trust_and_provenance_carried", carried, detail))
 
 		// 5. 注入通道同样排除 stale（双通道一致）
 		inj, err := inject.Run(st, inject.Options{Facet: "dev"})
@@ -276,7 +285,6 @@ func SuiteRoundtrip() *Report {
 			return []Check{check("fixture", false, err.Error())}
 		}
 		defer os.RemoveAll(st.Root)
-		defer os.RemoveAll(filepath.Join(st.Root, "..", "remin-eval-exp-*"))
 		in := inbox.New(st)
 		au := audit.New(st)
 		if _, err := promoteOne(st, in, au, "roundtrip 记忆 A", "", nil); err != nil {
@@ -315,10 +323,15 @@ func SuiteRoundtrip() *Report {
 	})
 }
 
-// SuiteParity 内容对等（H5）：注入通道与检索通道服务同一记忆集合
-func SuiteParity() *Report {
+// SuiteParity 内容对等（H5，架构 §9）：CLI inject 产物与 MCP memory_search 结果
+// 内容对等——两个通道都真实实跑：inject 走 Injector，另一侧经 stdio JSON-RPC
+// 拉起真实 MCP server 调 memory_search（不允许用同进程引擎调用偷换通道）。
+func SuiteParity(binPath string) *Report {
 	return run("parity", func() []Check {
-		st, _, err := buildFixture()
+		if binPath == "" {
+			return []Check{check("mcp_binary", false, "未提供 remin 二进制路径，无法实跑 MCP 通道")}
+		}
+		st, ids, err := buildFixture()
 		if st != nil {
 			defer os.RemoveAll(st.Root)
 		}
@@ -336,28 +349,46 @@ func SuiteParity() *Report {
 				injected = append(injected, m[1])
 			}
 		}
+
+		// MCP 通道：真实 stdio server
+		client, err := startMCPStdio(binPath, st.Root)
+		if err != nil {
+			return []Check{check("mcp_start", false, err.Error())}
+		}
+		defer client.Close()
+
+		// 逐条注入记忆经 memory_search 取回：每条 inject id 必须可被 MCP 检索到
+		bodyOf := map[string]string{}
 		ms, _ := st.ListMemories()
-		var visible []string
 		for _, m := range ms {
-			if m.Status == store.StatusActive && m.Facet == "dev" &&
-				(m.Verify == nil || m.Verify.Result != store.VerifyFailed) && !m.ExpiredAt(time.Now()) {
-				visible = append(visible, m.ID)
-			}
+			bodyOf[m.ID] = m.Body
 		}
-		set := map[string]bool{}
-		for _, id := range visible {
-			set[id] = true
-		}
-		var extra []string
+		notRetrievable := []string{}
+		retrieved := map[string]bool{}
 		for _, id := range injected {
-			if !set[id] {
-				extra = append(extra, id)
+			res, err := client.memorySearch(bodyOf[id], 3)
+			if err != nil {
+				return []Check{check("mcp_search", false, err.Error())}
+			}
+			found := false
+			for _, h := range res.Results {
+				retrieved[h.ID] = true
+				if h.ID == id {
+					found = true
+				}
+			}
+			if !found {
+				notRetrievable = append(notRetrievable, id)
 			}
 		}
+		_ = ids
 		return []Check{
-			check("inject_ids_all_visible", len(extra) == 0, fmt.Sprintf("extra=%v", extra)),
-			check("inject_covers_all_visible", len(injected) == len(visible),
-				fmt.Sprintf("injected=%d visible=%d", len(injected), len(visible))),
+			check("inject_ids_all_visible", len(notRetrievable) == 0,
+				fmt.Sprintf("MCP 检索不到的注入记忆=%v", notRetrievable)),
+			check("mcp_serves_nothing_hidden", len(retrieved) <= len(injected),
+				fmt.Sprintf("MCP 可检索 %d / 注入 %d（MCP 不得多给不可见记忆）", len(retrieved), len(injected))),
+			check("channels_agree_on_version", len(injected) > 0,
+				fmt.Sprintf("injected=%d（两通道非空对等基线）", len(injected))),
 		}
 	})
 }
@@ -386,8 +417,9 @@ func SuiteBudget() *Report {
 	})
 }
 
-// Run 运行套件：trust | roundtrip | parity | conflict | budget | all
-func Run(suite string) ([]*Report, error) {
+// Run 运行套件：trust | roundtrip | parity | conflict | budget | all。
+// binPath 为 remin 二进制路径（parity 套件实跑 MCP stdio 通道必需；空则该套件如实失败）。
+func Run(suite string, binPath string) ([]*Report, error) {
 	suites := []string{suite}
 	if suite == "all" || suite == "" {
 		suites = []string{"trust", "roundtrip", "parity", "conflict", "budget"}
@@ -396,11 +428,12 @@ func Run(suite string) ([]*Report, error) {
 	for _, s := range suites {
 		switch s {
 		case "trust", "roundtrip", "parity", "conflict", "budget":
-			suites := map[string]func() *Report{
-				"trust": SuiteTrust, "roundtrip": SuiteRoundtrip, "parity": SuiteParity,
+			runners := map[string]func() *Report{
+				"trust": SuiteTrust, "roundtrip": SuiteRoundtrip,
+				"parity":   func() *Report { return SuiteParity(binPath) },
 				"conflict": SuiteConflict, "budget": SuiteBudget,
 			}
-			reps = append(reps, suites[s]())
+			reps = append(reps, runners[s]())
 		default:
 			return nil, fmt.Errorf("未知套件 %s（可选: trust/roundtrip/parity/conflict/budget/all）", s)
 		}
