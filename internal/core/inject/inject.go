@@ -27,11 +27,12 @@ var typeWeight = map[string]float64{
 
 // Result 注入产物
 type Result struct {
-	Version  int
-	Text     string
-	Lines    int
-	Drained  int  // 追赶排空的 transcript 数
-	TimedOut bool // 追赶超时（降级异步，不影响注入）
+	Version  int    `json:"version"`
+	Text     string `json:"-"`
+	Lines    int    `json:"lines"`
+	Drained  int    `json:"drained"`               // 追赶排空的 transcript 数
+	TimedOut bool   `json:"timed_out,omitempty"`   // 追赶超时（降级异步，不影响注入）
+	DrainErr string `json:"drain_error,omitempty"` // 追赶失败原因（如实上报，注入继续）
 }
 
 // Options 注入参数
@@ -62,10 +63,9 @@ func Run(st *store.Store, opts Options) (*Result, error) {
 		n, err := opts.Drain(ctx)
 		res.Drained = n
 		if ctx.Err() == context.DeadlineExceeded {
-			res.TimedOut = true
+			res.TimedOut = true // 预算到：降级异步，剩余留队列
 		} else if err != nil {
-			// 追赶失败不致命：注入继续（hook 永不失败）
-			_ = err
+			res.DrainErr = err.Error() // 失败如实上报（--json 可见），注入本身继续
 		}
 		cancel()
 	}
@@ -131,16 +131,7 @@ func Run(st *store.Store, opts Options) (*Result, error) {
 }
 
 func injectable(m *store.Memory, now time.Time) bool {
-	if m.Status != store.StatusActive {
-		return false
-	}
-	if m.Verify != nil && m.Verify.Result == store.VerifyFailed {
-		return false
-	}
-	if m.ExpiredAt(now) {
-		return false
-	}
-	return true
+	return m.Searchable() && !m.ExpiredAt(now) // 可见性策略单一来源：store.Memory.Searchable
 }
 
 // rank 重要性 = 类型权重 × recency（确定性）

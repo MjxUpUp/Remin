@@ -46,7 +46,7 @@ step "5. 冲突消解：新事实 supersede 旧事实"
 "$BIN" propose "主力数据库已从 Postgres 迁移到 CockroachDB" --type semantic || exit 1
 OLD=$("$BIN" search "Postgres 事务" --json | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; print(d["results"][0]["id"] if d.get("results") else "")')
 echo "旧事实 id=$OLD"
-PB=$("$BIN" inbox --json | python3 -c 'import json,sys; bs=json.load(sys.stdin)["data"]["batches"]; print(next(b["id"] for b in bs if b["source"]=="manual"))')
+PB=$("$BIN" inbox --json | python3 -c 'import json,sys; bs=json.load(sys.stdin)["data"]["batches"]; print(next(b["id"] for b in bs if b["source"]=="manual" and b["status"]!="done"))')
 # 手工构造 supersede：用 CLI 无直接 --supersedes，走 import 冲突建议路径在步骤 6 验证；此处直接 promote 后再验证 status 链
 "$BIN" promote --batch "$PB" --all || exit 1
 "$BIN" status "$OLD" | head -8
@@ -112,4 +112,4 @@ HOME="$FAKE_HOME" "$BIN" doctor --json | python3 -c 'import json,sys; d=json.loa
 
 echo
 echo "═══ 演练完成 ═══"
-echo "沙盒: $SB（未清理，供检查）"
+echo "沙盒: ${SB}（未清理，供检查）"

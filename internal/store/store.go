@@ -16,7 +16,7 @@ type Store struct {
 // Init 创建真源仓库：目录骨架、.gitignore、config.yaml、VERSION=0、git 首提交
 func Init(root string) (*Store, error) {
 	st := &Store{Root: root}
-	if _, err := os.Stat(filepath.Join(root, ".git")); err == nil {
+	if IsGitRepo(root) {
 		return nil, fmt.Errorf("%s 已是 git 仓库（已初始化过？）", root)
 	}
 	if _, err := GitHasIdentity(root); err != nil {

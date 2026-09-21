@@ -98,17 +98,3 @@ func (a *Audit) List(action string) ([]Record, error) {
 	}
 	return out, nil
 }
-
-// TruncateLast 移除末尾一条记录（promotion 回滚用）
-func (a *Audit) TruncateLast(action string) error {
-	path := a.file(action)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) <= 1 {
-		return os.Remove(path)
-	}
-	return os.WriteFile(path, []byte(strings.Join(lines[:len(lines)-1], "\n")+"\n"), 0o644)
-}

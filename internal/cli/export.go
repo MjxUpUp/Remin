@@ -37,12 +37,13 @@ var exportCmd = &cobra.Command{
 
 var restoreFlags struct {
 	bundle string
+	check  bool
 }
 
 // restore 整库还原（唯一绕过 inbox 的通道——还原的是已人审的库）
 var restoreCmd = &cobra.Command{
-	Use:   "restore --bundle <dir>",
-	Short: "从导出物整库还原（先验哈希；VERSION 取 max）",
+	Use:   "restore --bundle <dir> [--check]",
+	Short: "从导出物整库还原（先验哈希；VERSION 取 max）；--check 只验不还原",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st, err := mustStore()
 		if err != nil {
@@ -50,6 +51,15 @@ var restoreCmd = &cobra.Command{
 		}
 		if restoreFlags.bundle == "" {
 			return fail(fmt.Errorf("需要 --bundle <dir>（remin export 的输出目录）"))
+		}
+		if restoreFlags.check {
+			m, err := exporter.VerifyBundle(restoreFlags.bundle)
+			if err != nil {
+				return fail(err)
+			}
+			return output(func() {
+				fmt.Printf("导出物完整（v%d，%d 文件哈希一致）\n", m.Version, len(m.Files))
+			}, map[string]interface{}{"verified": true, "version": m.Version, "files": len(m.Files)})
 		}
 		if err := exporter.Restore(st, restoreFlags.bundle); err != nil {
 			return fail(err)
@@ -108,6 +118,7 @@ func init() {
 	rootCmd.AddCommand(exportCmd)
 
 	restoreCmd.Flags().StringVar(&restoreFlags.bundle, "bundle", "", "导出物目录")
+	restoreCmd.Flags().BoolVar(&restoreFlags.check, "check", false, "只校验导出物哈希，不还原")
 	rootCmd.AddCommand(restoreCmd)
 
 	syncCmd.Flags().StringVar(&syncFlags.setRemote, "set-remote", "", "设置远端 git url")
