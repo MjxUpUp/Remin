@@ -69,7 +69,7 @@ type Verify struct {
 	Result    string `yaml:"result,omitempty"`
 }
 
-// Memory 一条记忆（spec v0 §2：14 个 frontmatter 字段 + 正文）
+// Memory 一条记忆（spec v0 §2：16 个 frontmatter 字段 + 正文）
 type Memory struct {
 	ID           string     `yaml:"id"`
 	Type         string     `yaml:"type"`

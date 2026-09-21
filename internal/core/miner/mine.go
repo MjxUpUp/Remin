@@ -68,7 +68,9 @@ func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options
 		return nil, err
 	}
 
-	// 快速档（FR-GOV-3）：仅 ephemeral recap 自动生效，trust 保持 unverified，永不盖章
+	// 快速档（FR-GOV-3）：仅 ephemeral recap 自动生效，trust 保持 unverified，永不盖章。
+	// hook 追赶路径（SkipLocked）下自动提升同样 try-lock：锁忙则留批次待下次追赶——
+	// 「inject 永不阻塞」硬约束覆盖本分支。
 	if cfg != nil && cfg.Autonomy == config.AutonomyFast && rep.Batch != "" {
 		var recapIDs []string
 		cands, _ := inbox.New(st).ListCandidates(rep.Batch)
@@ -78,9 +80,30 @@ func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options
 			}
 		}
 		if len(recapIDs) > 0 {
-			res, err := promotion.Promote(st, inbox.New(st), audit.New(st), promotion.Request{CandidateIDs: recapIDs, Auto: true})
+			promote := func() (int, error) {
+				res, err := promotion.Promote(st, inbox.New(st), audit.New(st), promotion.Request{CandidateIDs: recapIDs, Auto: true})
+				if err != nil {
+					return 0, err
+				}
+				return len(res.MemoryIDs), nil
+			}
+			var n int
+			var err error
+			if opts.SkipLocked {
+				var acquired bool
+				acquired, err = store.TryWithRoot(st.Root, func() error {
+					var e error
+					n, e = promote()
+					return e
+				})
+				if err == nil && !acquired {
+					rep.Note = "快速档自动提升跳过：真源被占用（下次追赶续办）"
+				}
+			} else {
+				n, err = promote()
+			}
 			if err == nil {
-				rep.AutoPromoted = len(res.MemoryIDs)
+				rep.AutoPromoted = n
 			}
 		}
 	}

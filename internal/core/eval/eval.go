@@ -352,7 +352,7 @@ func SuiteParity(binPath string) *Report {
 		if binPath == "" {
 			return []Check{check("mcp_binary", false, "未提供 remin 二进制路径，无法实跑 MCP 通道")}
 		}
-		st, ids, err := buildFixture()
+		st, _, err := buildFixture()
 		if st != nil {
 			defer os.RemoveAll(st.Root)
 		}
@@ -406,7 +406,6 @@ func SuiteParity(binPath string) *Report {
 				notRetrievable = append(notRetrievable, id)
 			}
 		}
-		_ = ids
 		return []Check{
 			check("inject_ids_all_visible", len(notRetrievable) == 0,
 				fmt.Sprintf("MCP 检索不到的注入记忆=%v", notRetrievable)),

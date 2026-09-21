@@ -48,6 +48,9 @@ func Load(path string) (*Config, error) {
 	if c.Autonomy == "" {
 		c.Autonomy = AutonomyConservative
 	}
+	if c.InjectFacet == "" {
+		c.InjectFacet = "dev" // 缺键回填默认（防手工删键后 facet 空过滤）
+	}
 	return &c, nil
 }
 

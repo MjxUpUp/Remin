@@ -143,18 +143,25 @@ func Restore(st *store.Store, bundleDir string) error {
 		success := false
 		defer func() {
 			if !success {
-				// 失败回滚：删掉半成品，搬回原内容
+				// 失败回滚：删掉半成品，搬回原内容（含 config.yaml 对称回搬）
 				for _, d := range exportedDirs {
 					os.RemoveAll(filepath.Join(st.Root, d))
 				}
 				for _, d := range exportedDirs {
 					_ = os.Rename(filepath.Join(stageOld, d), filepath.Join(st.Root, d))
 				}
+				_ = os.Rename(filepath.Join(stageOld, "config.yaml"), filepath.Join(st.Root, "config.yaml"))
 			}
 			os.RemoveAll(stageOld)
 		}()
 		for _, d := range exportedDirs {
 			if err := os.Rename(filepath.Join(st.Root, d), filepath.Join(stageOld, d)); err != nil {
+				return err
+			}
+		}
+		// 原 config 先入 stageOld：失败回滚对称搬回（config 换入前的原件保护）
+		if _, err := os.Stat(filepath.Join(st.Root, "config.yaml")); err == nil {
+			if err := os.Rename(filepath.Join(st.Root, "config.yaml"), filepath.Join(stageOld, "config.yaml")); err != nil {
 				return err
 			}
 		}
