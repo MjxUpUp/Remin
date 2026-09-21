@@ -120,6 +120,8 @@ func TestULIDFormatAndUniqueness(t *testing.T) {
 func TestInitLayoutAndVersion(t *testing.T) {
 	t.Setenv("GIT_AUTHOR_NAME", "t")
 	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
 	dir := t.TempDir()
 	st, err := Init(dir)
 	if err != nil {
@@ -146,6 +148,8 @@ func TestInitLayoutAndVersion(t *testing.T) {
 func TestSaveGetListMemories(t *testing.T) {
 	t.Setenv("GIT_AUTHOR_NAME", "t")
 	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
 	dir := t.TempDir()
 	st, _ := Init(dir)
 	m := mustMemory()
