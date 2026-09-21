@@ -1,9 +1,10 @@
 BINARY := bin/remin
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.3.0)
 
 .PHONY: build test race vet constitution adapter-budget clean
 
 build:
-	go build -o $(BINARY) ./cmd/remin
+	go build -ldflags "-X github.com/remin-dev/remin/internal/cli.Version=$(VERSION)" -o $(BINARY) ./cmd/remin
 
 test:
 	go test ./...

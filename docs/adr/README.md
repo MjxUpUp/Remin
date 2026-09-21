@@ -11,3 +11,4 @@
 | [0005](0005-cobra-cli-json.md) | CLI 框架 cobra；全命令 --json | accepted |
 | [0006](0006-zero-adapter-edge.md) | 边缘层零适配器代码（doctor 写全局配置直调 CLI） | accepted |
 | [0007](0007-sqlite-shellout.md) | claude-mem SQLite 导入 shell out sqlite3 | accepted |
+| [0008](0008-distribution-lifecycle.md) | 分发与生命周期：npm 获取 + 落位 + 台账 + 自更新 + 干净卸载 | accepted |

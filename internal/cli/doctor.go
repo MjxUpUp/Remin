@@ -14,23 +14,24 @@ var doctorFlags struct {
 	takeover bool
 }
 
-// doctor 检测已装 agent / 一键接线（写前备份）/ 健康检查 / 接管同名 memory server
+// doctor 检测已装 agent / 一键接线（落位 + 写前备份 + 台账记账）/ 健康检查 / 接管同名 memory server
 var doctorCmd = &cobra.Command{
 	Use:   "doctor [--install] [--takeover]",
-	Short: "检测已装 agent、健康检查；--install 一键接线（repo 零污染）",
+	Short: "检测已装 agent、健康检查；--install 落位二进制并一键接线（台账记账）",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		bin, err := os.Executable()
 		if err != nil {
 			return fail(err)
 		}
 		home := store.HomeDir()
+		root := store.ResolveRoot(rootPath)
 		type report struct {
 			Health map[string]interface{} `json:"health"`
 			Agents []doctor.AgentStatus   `json:"agents"`
+			Staged string                 `json:"staged,omitempty"`
 			Wired  []doctor.AgentStatus   `json:"wired,omitempty"`
 		}
-		rep := report{Health: map[string]interface{}{}, Agents: doctor.Detect(home, bin)}
-		root := store.ResolveRoot(rootPath)
+		rep := report{Health: map[string]interface{}{}}
 		if st, err := store.Open(root); err == nil {
 			rep.Health["store"] = root
 			if v, err := st.Version(); err == nil {
@@ -46,8 +47,19 @@ var doctorCmd = &cobra.Command{
 			rep.Health["store"] = "未初始化（remin init）"
 		}
 
+		// 接线一律以落位稳定路径为准（渠道目录漂移不影响已接线配置）
+		stable := doctor.StablePath(root)
 		if doctorFlags.install {
-			wired, err := doctor.Install(home, bin, doctorFlags.takeover)
+			stable, err = doctor.Stage(root, bin)
+			if err != nil {
+				return fail(err)
+			}
+			rep.Staged = stable
+		}
+		rep.Agents = doctor.Detect(home, stable)
+
+		if doctorFlags.install {
+			wired, err := doctor.Install(home, root, stable, doctorFlags.takeover)
 			if err != nil {
 				return fail(err)
 			}
@@ -60,6 +72,9 @@ var doctorCmd = &cobra.Command{
 			}
 			if ok, _ := rep.Health["git_identity"].(bool); !ok {
 				fmt.Printf("⚠ %v\n", rep.Health["note"])
+			}
+			if rep.Staged != "" {
+				fmt.Printf("落位: %s（接线钉此路径，升级原位替换）\n", rep.Staged)
 			}
 			fmt.Println("agent 检测：")
 			for _, a := range rep.Agents {
@@ -75,7 +90,7 @@ var doctorCmd = &cobra.Command{
 				fmt.Printf("  %-12s %s\n", a.Agent, mark)
 			}
 			if len(rep.Wired) > 0 {
-				fmt.Println("已接线（写前已备份原配置）：")
+				fmt.Println("已接线（写前备份 + 台账记账，uninstall 可精确摘除）：")
 				for _, w := range rep.Wired {
 					fmt.Printf("  %-12s MCP memory + 会话 hooks\n", w.Agent)
 				}
@@ -89,7 +104,7 @@ var doctorCmd = &cobra.Command{
 }
 
 func init() {
-	doctorCmd.Flags().BoolVar(&doctorFlags.install, "install", false, "写入各 agent 全局配置（MCP + hooks；写前备份）")
+	doctorCmd.Flags().BoolVar(&doctorFlags.install, "install", false, "落位二进制到 ~/.remin/bin 并写入各 agent 全局配置（MCP + hooks；备份 + 台账）")
 	doctorCmd.Flags().BoolVar(&doctorFlags.takeover, "takeover", false, "接管同名 memory server")
 	rootCmd.AddCommand(doctorCmd)
 }

@@ -1,0 +1,27 @@
+{
+  "name": "@reminmem/remin",
+  "version": "0.0.0-placeholder",
+  "description": "Remin（随忆）——个人跨 agent 可信记忆层：换脑不换忆。记忆以 markdown 归你所有，可审计可迁移。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MjxUpUp/Remin.git"
+  },
+  "bin": {
+    "remin": "bin/remin.js"
+  },
+  "files": [
+    "bin/remin.js",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@reminmem/remin-darwin-arm64": "0.0.0-placeholder",
+    "@reminmem/remin-darwin-x64": "0.0.0-placeholder",
+    "@reminmem/remin-linux-arm64": "0.0.0-placeholder",
+    "@reminmem/remin-linux-x64": "0.0.0-placeholder",
+    "@reminmem/remin-win32-x64": "0.0.0-placeholder"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

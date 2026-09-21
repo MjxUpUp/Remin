@@ -1,2 +1,4 @@
-bin/
+/bin/
 .DS_Store
+npm/dist/
+npm/out/

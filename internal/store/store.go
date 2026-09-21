@@ -36,7 +36,7 @@ func Init(root string) (*Store, error) {
 			return nil, fmt.Errorf("创建目录失败: %w", err)
 		}
 	}
-	gitignore := "index/bm25-*\nviews/\ntranscripts-cache/\n"
+	gitignore := "index/bm25-*\nviews/\ntranscripts-cache/\nbin/\nwiring.json\n"
 	files := map[string]string{
 		".gitignore":    gitignore,
 		"config.yaml":   defaultConfigYAML,

@@ -31,7 +31,7 @@ func fixtureHome(t *testing.T) string {
 // M6 完成判据：doctor 在 fixture HOME 实测接线（备份 + 键级合并只增不删）
 func TestInstallAllAgents(t *testing.T) {
 	home := fixtureHome(t)
-	wired, err := Install(home, fakeBin, false)
+	wired, err := Install(home, t.TempDir(), fakeBin, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestInstallAllAgents(t *testing.T) {
 	}
 
 	// 幂等：再次 install 不重复添加 hook
-	if _, err := Install(home, fakeBin, false); err != nil {
+	if _, err := Install(home, t.TempDir(), fakeBin, false); err != nil {
 		t.Fatal(err)
 	}
 	sdata2, _ := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
@@ -127,10 +127,10 @@ func TestTakeover(t *testing.T) {
 	os.MkdirAll(filepath.Join(home, ".cursor"), 0o755)
 	os.WriteFile(filepath.Join(home, ".cursor", "mcp.json"),
 		[]byte(`{"mcpServers": {"memory": {"command": "/official/memory-server"}}}`), 0o644)
-	if err := InstallCursor(home, fakeBin, false); err == nil {
+	if _, err := InstallCursor(home, fakeBin, false); err == nil {
 		t.Fatal("存在同名 server 且未 --takeover 应拒绝")
 	}
-	if err := InstallCursor(home, fakeBin, true); err != nil {
+	if _, err := InstallCursor(home, fakeBin, true); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(home, ".cursor", "mcp.json"))
