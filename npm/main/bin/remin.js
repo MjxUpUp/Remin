@@ -24,6 +24,12 @@ try {
   process.exit(1);
 }
 
+// 兜底：tarball 若丢失执行位（如 upload-artifact v4 已知问题），安装目录内修复后 spawn
+try {
+  const fs = require('fs');
+  fs.chmodSync(bin, 0o755);
+} catch (_) { /* 目录只读时交由 spawn 原样报错 */ }
+
 const child = spawn(bin, process.argv.slice(2), { stdio: 'inherit', windowsHide: true });
 child.on('error', (err) => {
   console.error('remin: 启动失败:', err.message);
