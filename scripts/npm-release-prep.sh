@@ -41,6 +41,10 @@ for plat in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
   "version": "$ver",
   "description": "Remin binary for $plat",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MjxUpUp/Remin.git"
+  },
   "os": ["$(os_of "$plat")"],
   "cpu": ["$(arch_of "$plat")"],
   "files": ["bin"]
