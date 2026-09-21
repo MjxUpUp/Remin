@@ -4,6 +4,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="$ROOT/bin/remin"
 
+# 自建二进制：演练必须测当前工作区代码——陈旧 bin/remin 会给出假绿
+# （2026-09-21 实例：v0.2 时代二进制跑过 lifecycle 后新增的 step15 断言）
+go build -o "$BIN" ./cmd/remin || exit 1
+
 SB="$(mktemp -d)/sandbox"
 mkdir -p "$SB"
 export REMIN_HOME="$SB/remin-store"
@@ -116,23 +120,15 @@ test -f "$REMIN_HOME/wiring.json" && echo "台账 OK: $REMIN_HOME/wiring.json"
 step "15. uninstall 卸载往返（cordis 台账回放，记忆默认保留）"
 HOME="$FAKE_HOME" "$BIN" uninstall || exit 1
 python3 - "$FAKE_HOME" "$REMIN_HOME" <<'PYEOF' || exit 1
-import json, os, sys, glob
+import os, sys, glob
 home, root = sys.argv[1], sys.argv[2]
-# .claude.json：无 memory 键
-cfg = json.load(open(os.path.join(home, ".claude.json")))
-assert "memory" not in cfg.get("mcpServers", {}), "mcpServers.memory 未摘除"
-# settings.json：无 hooks 残留
-sc = json.load(open(os.path.join(home, ".claude", "settings.json")))
-assert not sc.get("hooks"), f"hooks 未摘净: {sc.get('hooks')}"
-# codex TOML：无 memory 段
-toml = open(os.path.join(home, ".codex", "config.toml")).read()
-assert "[mcp_servers.memory]" not in toml, "TOML memory 段未摘除"
-# cursor / gemini（install 创建的空壳文件已整体删除，不存在即干净）
-for p in (".cursor/mcp.json", ".gemini/settings.json"):
+# fixture HOME 从零创建：五处 agent 配置均为 install 创建的空壳，
+# 卸载必须整删（正向钉死 ledger Created 语义；真实主目录中这些文件
+# 含用户自有内容，不满足空壳条件会保留且无残留键——那是单测覆盖面）
+for p in (".claude.json", ".claude/settings.json", ".codex/config.toml",
+          ".cursor/mcp.json", ".gemini/settings.json"):
     fp = os.path.join(home, p)
-    if os.path.exists(fp):
-        c = json.load(open(fp))
-        assert "memory" not in c.get("mcpServers", {}), f"{p} 未摘除"
+    assert not os.path.exists(fp), f"{p} 空壳未整删"
 # 备份清零、落位/台账删除、真源保留
 assert not glob.glob(os.path.join(home, "**", "*.remin-backup-*"), recursive=True), "备份未清零"
 assert not os.path.exists(os.path.join(root, "bin")), "落位 bin 未删除"

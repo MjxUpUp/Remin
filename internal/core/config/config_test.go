@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -55,5 +56,63 @@ func TestLoadFillsEmptyAutonomy(t *testing.T) {
 	}
 	if c.Autonomy != AutonomyConservative {
 		t.Errorf("空 autonomy 应回填默认: %q", c.Autonomy)
+	}
+}
+
+// llm 节：深路径端点可配；密钥只从环境变量读（config.yaml 在 git 真源内，密钥不得入历史）
+func TestLoadLLMSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	os.WriteFile(path, []byte("llm:\n  endpoint: https://api.example.com/v1/chat/completions\n  model: m1\n  timeout_ms: 5000\n"), 0o644)
+	t.Setenv("REMIN_LLM_API_KEY", "env-secret")
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LLM == nil || c.LLM.Endpoint != "https://api.example.com/v1/chat/completions" ||
+		c.LLM.Model != "m1" || c.LLM.TimeoutMs != 5000 {
+		t.Fatalf("llm 节解析: %+v", c.LLM)
+	}
+	if c.LLM.APIKey != "env-secret" {
+		t.Errorf("APIKey 应从 REMIN_LLM_API_KEY 注入: %q", c.LLM.APIKey)
+	}
+}
+
+// 无 llm 节 = 深路径关闭（全系统零 LLM 默认不变）
+func TestLoadWithoutLLMSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	os.WriteFile(path, []byte("facets: [dev]\n"), 0o644)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LLM != nil {
+		t.Errorf("无 llm 节应为 nil: %+v", c.LLM)
+	}
+}
+
+// timeout_ms 缺省回填硬预算默认
+func TestLoadLLMDefaultTimeout(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	os.WriteFile(path, []byte("llm:\n  endpoint: https://x\n"), 0o644)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LLM == nil || c.LLM.TimeoutMs != LLMDefaultTimeoutMs {
+		t.Errorf("缺省 timeout 应回填默认: %+v", c.LLM)
+	}
+}
+
+// 保存往返不落密钥（yaml:"-"）
+func TestSaveLLMDoesNotPersistKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	c := Default()
+	c.LLM = &LLMConfig{Endpoint: "https://x", Model: "m", APIKey: "should-not-persist", TimeoutMs: 1000}
+	if err := c.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "should-not-persist") {
+		t.Errorf("密钥不得写入 config.yaml（git 真源）: %s", data)
 	}
 }
