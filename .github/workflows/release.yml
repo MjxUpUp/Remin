@@ -1,0 +1,123 @@
+# 发版流水线：tag v* → 五平台交叉构建 → npm 包组装 → GitHub Release + npm 发布。
+# 发布只发生在这里（GitHub Actions → npm），绝不从开发者本机 publish。
+# 前置（一次性）：仓库 secrets 配置 NPM_TOKEN（@reminmem 组织 publish 权限，
+# automation 角色）。仓库当前 private：npm provenance 暂不适用（需 public 仓库），
+# 完整性由 registry dist.integrity（sha512）与 SHA256SUMS 双重保障。
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '演练版本号（X.Y.Z，仅用于打包验证，不发布）'
+        required: true
+        default: '0.0.0'
+      publish:
+        description: '真发布到 npm（默认仅演练：构建+打包不 publish）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # GitHub Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin, goarch: arm64, plat: darwin-arm64 }
+          - { goos: darwin, goarch: amd64, plat: darwin-x64 }
+          - { goos: linux, goarch: amd64, plat: linux-x64 }
+          - { goos: linux, goarch: arm64, plat: linux-arm64 }
+          - { goos: windows, goarch: amd64, plat: win32-x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: 版本与测试门禁
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag 必须形如 vX.Y.Z（得到 ${GITHUB_REF_NAME}）"; exit 1; }
+          fi
+          go build ./... && go vet ./... && go test ./...
+      - name: 交叉构建 ${{ matrix.plat }}
+        run: |
+          mkdir -p dist/${{ matrix.plat }}
+          exe=remin
+          [[ "${{ matrix.goos }}" == windows ]] && exe=remin.exe
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath \
+            -ldflags "-s -w -X github.com/remin-dev/remin/internal/cli.Version=${GITHUB_REF_NAME}" \
+            -o "dist/${{ matrix.plat }}/$exe" ./cmd/remin
+          cd dist/${{ matrix.plat }} && shasum -a 256 "$exe" > "$exe.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.plat }}
+          path: dist/${{ matrix.plat }}/*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org/
+      - name: 汇齐五平台二进制
+        run: |
+          mkdir -p dist
+          for plat in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+            gh artifact download "bin-$plat" --dir "dist/$plat" || true
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: 确定版本与发布模式
+        id: meta
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]] || [[ "${{ inputs.publish }}" == "true" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 组装 npm 包（含内容验证）
+        run: |
+          chmod +x scripts/npm-release-prep.sh
+          scripts/npm-release-prep.sh "${{ steps.meta.outputs.version }}" dist npm/out
+          cd npm/out
+          for d in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64 main; do
+            (cd "$d" && npm pack --dry-run 2>&1 | tee "/tmp/pack-$d.log")
+          done
+      - name: 发布到 npm（平台包 → 主包；scoped 公开包需 --access public）
+        if: steps.meta.outputs.publish == 'true'
+        run: |
+          set -e
+          for plat in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+            (cd "npm/out/$plat" && npm publish --access public)
+          done
+          (cd npm/out/main && npm publish --access public)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: GitHub Release（二进制 + SHA256SUMS）
+        if: steps.meta.outputs.release == 'true'
+        run: |
+          (cd dist && cat */*.sha256 > SHA256SUMS.txt)
+          shopt -s nullglob
+          gh release create "${GITHUB_REF_NAME}" dist/*/* dist/SHA256SUMS.txt \
+            --title "Remin ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

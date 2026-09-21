@@ -109,6 +109,40 @@ HOME="$FAKE_HOME" "$BIN" doctor
 HOME="$FAKE_HOME" "$BIN" doctor --install
 echo "--- .claude.json 摘要 ---"
 HOME="$FAKE_HOME" "$BIN" doctor --json | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; print([ (a["agent"],a["wired"]) for a in d["agents"]])'
+echo "--- 落位与台账 ---"
+test -x "$REMIN_HOME/bin/remin" && echo "落位 OK: $REMIN_HOME/bin/remin"
+test -f "$REMIN_HOME/wiring.json" && echo "台账 OK: $REMIN_HOME/wiring.json"
+
+step "15. uninstall 卸载往返（cordis 台账回放，记忆默认保留）"
+HOME="$FAKE_HOME" "$BIN" uninstall || exit 1
+python3 - "$FAKE_HOME" "$REMIN_HOME" <<'PYEOF' || exit 1
+import json, os, sys, glob
+home, root = sys.argv[1], sys.argv[2]
+# .claude.json：无 memory 键
+cfg = json.load(open(os.path.join(home, ".claude.json")))
+assert "memory" not in cfg.get("mcpServers", {}), "mcpServers.memory 未摘除"
+# settings.json：无 hooks 残留
+sc = json.load(open(os.path.join(home, ".claude", "settings.json")))
+assert not sc.get("hooks"), f"hooks 未摘净: {sc.get('hooks')}"
+# codex TOML：无 memory 段
+toml = open(os.path.join(home, ".codex", "config.toml")).read()
+assert "[mcp_servers.memory]" not in toml, "TOML memory 段未摘除"
+# cursor / gemini（install 创建的空壳文件已整体删除，不存在即干净）
+for p in (".cursor/mcp.json", ".gemini/settings.json"):
+    fp = os.path.join(home, p)
+    if os.path.exists(fp):
+        c = json.load(open(fp))
+        assert "memory" not in c.get("mcpServers", {}), f"{p} 未摘除"
+# 备份清零、落位/台账删除、真源保留
+assert not glob.glob(os.path.join(home, "**", "*.remin-backup-*"), recursive=True), "备份未清零"
+assert not os.path.exists(os.path.join(root, "bin")), "落位 bin 未删除"
+assert not os.path.exists(os.path.join(root, "wiring.json")), "台账未删除"
+assert os.path.isdir(root), "真源被误删（默认必须保留）"
+print("卸载往返全净：配置还原 / 备份清零 / 落位与台账删除 / 记忆真源保留")
+PYEOF
+HOME="$FAKE_HOME" "$BIN" doctor | tail -6
+echo "--- 真源记忆仍在（卸载不动用户资产）---"
+"$BIN" search "迁移脚本" | head -3
 
 echo
 echo "═══ 演练完成 ═══"

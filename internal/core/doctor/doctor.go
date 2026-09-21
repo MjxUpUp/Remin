@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -80,32 +81,46 @@ func detectClaudeCode(home, binPath string) AgentStatus {
 	return s
 }
 
-// InstallClaudeCode ~/.claude.json 注册 MCP + ~/.claude/settings.json 注册两会话 hook
-func InstallClaudeCode(home, binPath string, takeover bool) error {
+// InstallClaudeCode ~/.claude.json 注册 MCP + ~/.claude/settings.json 注册两会话 hook。
+// 返回本次生效的 effects（含未发生写入但已处于我们名下的项——台账反映归属现状）
+func InstallClaudeCode(home, binPath string, takeover bool) ([]Effect, error) {
+	var effects []Effect
 	global := filepath.Join(home, ".claude.json")
 	cfg, err := readJSONObject(global)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	servers, _ := cfg["mcpServers"].(map[string]any)
 	if servers == nil {
 		servers = map[string]any{}
 	}
-	if ent, exists := servers["memory"].(map[string]any); exists {
-		if cmd, _ := ent["command"].(string); cmd != binPath && !takeover {
-			return fmt.Errorf("已存在同名 memory server（command=%q）——确认接管请加 --takeover", cmd)
+	ent := mcpEntry(binPath)
+	needWrite := true
+	if cur, exists := servers["memory"].(map[string]any); exists {
+		if cmd, _ := cur["command"].(string); cmd == binPath {
+			needWrite = false // 已接线，幂等
+		} else if !takeover {
+			return nil, fmt.Errorf("已存在同名 memory server（command=%q）——确认接管请加 --takeover", cmd)
 		}
 	}
-	servers["memory"] = mcpEntry(binPath)
-	cfg["mcpServers"] = servers
-	if err := backupAndWriteJSON(global, cfg); err != nil {
-		return err
+	if needWrite {
+		servers["memory"] = ent
+		cfg["mcpServers"] = servers
+		bk, err := backupAndWriteJSON(global, cfg)
+		if err != nil {
+			return nil, err
+		}
+		effects = append(effects, Effect{ID: effectID("mcp-json", global, "mcpServers.memory"),
+			Kind: "mcp-json", File: global, Key: "mcpServers.memory", Command: binPath, Backup: bk})
+	} else {
+		effects = append(effects, Effect{ID: effectID("mcp-json", global, "mcpServers.memory"),
+			Kind: "mcp-json", File: global, Key: "mcpServers.memory", Command: binPath})
 	}
 
 	settingsPath := filepath.Join(home, ".claude", "settings.json")
 	sc, err := readJSONObject(settingsPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	hooks, _ := sc["hooks"].(map[string]any)
 	if hooks == nil {
@@ -114,10 +129,29 @@ func InstallClaudeCode(home, binPath string, takeover bool) error {
 	// shell 命令里的路径含空格/特殊字符必须加引号（hook 由 agent 经 shell 执行）
 	injectCmd := shellQuote(binPath) + " inject"
 	stopCmd := shellQuote(binPath) + " hook-stop"
-	hooks["SessionStart"] = appendHookOnce(hooks["SessionStart"], injectCmd)
-	hooks["Stop"] = appendHookOnce(hooks["Stop"], stopCmd)
-	sc["hooks"] = hooks
-	return backupAndWriteJSON(settingsPath, sc)
+	startList, addStart := appendHookOnce(hooks["SessionStart"], injectCmd)
+	stopList, addStop := appendHookOnce(hooks["Stop"], stopCmd)
+	if addStart || addStop {
+		hooks["SessionStart"] = startList
+		hooks["Stop"] = stopList
+		sc["hooks"] = hooks
+		bk, err := backupAndWriteJSON(settingsPath, sc)
+		if err != nil {
+			return nil, err
+		}
+		effects = append(effects,
+			Effect{ID: effectID("hook-entry", settingsPath, "SessionStart"), Kind: "hook-entry",
+				File: settingsPath, Key: "SessionStart", Command: injectCmd, Backup: bk},
+			Effect{ID: effectID("hook-entry", settingsPath, "Stop"), Kind: "hook-entry",
+				File: settingsPath, Key: "Stop", Command: stopCmd, Backup: bk})
+	} else {
+		effects = append(effects,
+			Effect{ID: effectID("hook-entry", settingsPath, "SessionStart"), Kind: "hook-entry",
+				File: settingsPath, Key: "SessionStart", Command: injectCmd},
+			Effect{ID: effectID("hook-entry", settingsPath, "Stop"), Kind: "hook-entry",
+				File: settingsPath, Key: "Stop", Command: stopCmd})
+	}
+	return effects, nil
 }
 
 func jsonEscape(s string) string { return strings.ReplaceAll(s, "\"", "\\\"") }
@@ -128,7 +162,8 @@ func shellQuote(s string) string {
 }
 
 // appendHookOnce Claude Code hooks 形态：[{matcher?, hooks:[{type:command, command}]}]
-func appendHookOnce(existing any, command string) []any {
+// 返回（可能追加了 command 的列表, 是否发生了追加）
+func appendHookOnce(existing any, command string) ([]any, bool) {
 	var list []any
 	if l, ok := existing.([]any); ok {
 		list = l
@@ -139,14 +174,14 @@ func appendHookOnce(existing any, command string) []any {
 		for _, h := range hs {
 			hh, _ := h.(map[string]any)
 			if c, _ := hh["command"].(string); c == command {
-				return list // 已接线，幂等
+				return list, false // 已接线，幂等
 			}
 		}
 	}
 	list = append(list, map[string]any{
 		"hooks": []any{map[string]any{"type": "command", "command": command}},
 	})
-	return list
+	return list, true
 }
 
 // ── codex（config.toml）───────────────────────────────────────────────────────
@@ -172,28 +207,36 @@ func detectCodex(home, binPath string) AgentStatus {
 	return s
 }
 
-func InstallCodex(home, binPath string, takeover bool) error {
+func InstallCodex(home, binPath string, takeover bool) ([]Effect, error) {
 	path := filepath.Join(home, ".codex", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return nil, err
 	}
 	data, _ := os.ReadFile(path)
 	body := string(data)
 	section := tomlSection(body, "mcp_servers.memory")
 	if len(section) > 0 {
 		if strings.Contains(string(section), "command = \""+binPath+"\"") {
-			return nil // 已接线
+			// 已接线，幂等（仍记账：归属现状）
+			return []Effect{{ID: effectID("toml-section", path, "mcp_servers.memory"),
+				Kind: "toml-section", File: path, Section: "mcp_servers.memory", Command: binPath}}, nil
 		}
 		if !takeover {
-			return fmt.Errorf("已存在 [mcp_servers.memory]——确认接管请加 --takeover")
+			return nil, fmt.Errorf("已存在 [mcp_servers.memory]——确认接管请加 --takeover")
 		}
 		body = strings.Replace(body, string(section), "", 1)
 	}
 	body = strings.TrimRight(body, "\n") + "\n\n[mcp_servers.memory]\ncommand = \"" + binPath + "\"\nargs = [\"mcp\"]\n"
-	return backupAndWrite(path, []byte(body))
+	bk, err := backupAndWrite(path, []byte(body))
+	if err != nil {
+		return nil, err
+	}
+	return []Effect{{ID: effectID("toml-section", path, "mcp_servers.memory"),
+		Kind: "toml-section", File: path, Section: "mcp_servers.memory", Command: binPath, Backup: bk}}, nil
 }
 
-// tomlSection 提取 [section] 段（含头，到下一个 [ 段或 EOF）
+// tomlSection 提取 [section] 段（含头，到下一个 [ 段或 EOF）。
+// 尾部空行不入段：段串必须与 body 精确子串匹配（Replace 删除依赖此性质）。
 func tomlSection(body, section string) []byte {
 	lines := strings.Split(body, "\n")
 	var out []string
@@ -212,6 +255,9 @@ func tomlSection(body, section string) []byte {
 			out = append(out, l)
 		}
 	}
+	for len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+		out = out[:len(out)-1]
+	}
 	if len(out) == 0 {
 		return nil
 	}
@@ -220,23 +266,36 @@ func tomlSection(body, section string) []byte {
 
 // ── cursor / gemini-cli（JSON mcpServers）────────────────────────────────────
 
-func installJSONMCPServers(path string, binPath string, takeover bool) error {
+func installJSONMCPServers(path string, binPath string, takeover bool) ([]Effect, error) {
 	cfg, err := readJSONObject(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	servers, _ := cfg["mcpServers"].(map[string]any)
 	if servers == nil {
 		servers = map[string]any{}
 	}
-	if ent, exists := servers["memory"].(map[string]any); exists {
-		if cmd, _ := ent["command"].(string); cmd != binPath && !takeover {
-			return fmt.Errorf("已存在同名 memory server（command=%q）——确认接管请加 --takeover", cmd)
+	needWrite := true
+	if cur, exists := servers["memory"].(map[string]any); exists {
+		if cmd, _ := cur["command"].(string); cmd == binPath {
+			needWrite = false // 已接线，幂等
+		} else if !takeover {
+			return nil, fmt.Errorf("已存在同名 memory server（command=%q）——确认接管请加 --takeover", cmd)
 		}
 	}
-	servers["memory"] = mcpEntry(binPath)
-	cfg["mcpServers"] = servers
-	return backupAndWriteJSON(path, cfg)
+	e := Effect{ID: effectID("mcp-json", path, "mcpServers.memory"),
+		Kind: "mcp-json", File: path, Key: "mcpServers.memory", Command: binPath}
+	if needWrite {
+		servers["memory"] = mcpEntry(binPath)
+		cfg["mcpServers"] = servers
+		bk, err := backupAndWriteJSON(path, cfg)
+		if err != nil {
+			return nil, err
+		}
+		e.Backup = bk
+		e.Created = bk == "" // 无备份 ⇒ 写前文件不存在，是我们创建的
+	}
+	return []Effect{e}, nil
 }
 
 func detectCursor(home, binPath string) AgentStatus {
@@ -266,67 +325,102 @@ func detectJSONMCPServer(agent, path, binPath string) AgentStatus {
 	return s
 }
 
-func InstallCursor(home, binPath string, takeover bool) error {
+func InstallCursor(home, binPath string, takeover bool) ([]Effect, error) {
 	path := filepath.Join(home, ".cursor", "mcp.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return nil, err
 	}
 	return installJSONMCPServers(path, binPath, takeover)
 }
 
-func InstallGemini(home, binPath string, takeover bool) error {
+func InstallGemini(home, binPath string, takeover bool) ([]Effect, error) {
 	path := filepath.Join(home, ".gemini", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return nil, err
 	}
 	return installJSONMCPServers(path, binPath, takeover)
 }
 
-// Install 一键接线（全部已装 agent；写前备份）
-func Install(home, binPath string, takeover bool) ([]AgentStatus, error) {
+// Install 一键接线（全部已装 agent；写前备份；全部 effect 入台账）
+func Install(home, root, binPath string, takeover bool) ([]AgentStatus, error) {
 	var done []AgentStatus
+	ledger, err := LoadLedger(root)
+	if err != nil {
+		return done, fmt.Errorf("读取接线台账失败: %w", err)
+	}
 	for _, s := range Detect(home, binPath) {
 		if !s.Installed {
 			continue
 		}
+		var effects []Effect
 		var err error
 		switch s.Agent {
 		case AgentClaudeCode:
-			err = InstallClaudeCode(home, binPath, takeover)
+			effects, err = InstallClaudeCode(home, binPath, takeover)
 		case AgentCodex:
-			err = InstallCodex(home, binPath, takeover)
+			effects, err = InstallCodex(home, binPath, takeover)
 		case AgentCursor:
-			err = InstallCursor(home, binPath, takeover)
+			effects, err = InstallCursor(home, binPath, takeover)
 		case AgentGeminiCLI:
-			err = InstallGemini(home, binPath, takeover)
+			effects, err = InstallGemini(home, binPath, takeover)
 		}
 		if err != nil {
 			return done, fmt.Errorf("%s 接线失败: %w", s.Agent, err)
 		}
+		for _, e := range effects {
+			e.Agent = s.Agent
+			ledger.Append(e)
+		}
 		done = append(done, AgentStatus{Agent: s.Agent, Installed: true, Wired: true})
+	}
+	if err := ledger.Save(root); err != nil {
+		return done, fmt.Errorf("接线台账写入失败: %w", err)
 	}
 	return done, nil
 }
 
 // ── 备份与写回 ────────────────────────────────────────────────────────────────
+// 备份保留策略：每个目标文件至多 maxBackups 份（时间戳后缀排序，旧的先清），
+// 反复 doctor --install 不再无限堆积 .remin-backup-* 污染用户目录。
 
-func backupAndWriteJSON(path string, cfg map[string]any) error {
+const maxBackups = 3
+
+func backupAndWriteJSON(path string, cfg map[string]any) (string, error) {
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return err
+		return "", err
 	}
 	return backupAndWrite(path, append(data, '\n'))
 }
 
-func backupAndWrite(path string, data []byte) error {
+func backupAndWrite(path string, data []byte) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return "", err
 	}
+	backup := ""
 	if old, err := os.ReadFile(path); err == nil {
-		backup := path + ".remin-backup-" + strings.ReplaceAll(nowStamp(), ":", "")
-		_ = os.WriteFile(backup, old, 0o644)
+		backup = path + ".remin-backup-" + strings.ReplaceAll(nowStamp(), ":", "")
+		if err := os.WriteFile(backup, old, 0o644); err != nil {
+			return "", err
+		}
+		pruneBackups(path)
 	}
-	return os.WriteFile(path, data, 0o644)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "", err
+	}
+	return backup, nil
+}
+
+// pruneBackups 只保留最新 maxBackups 份（backupAndWrite 刚写的那份最新）
+func pruneBackups(path string) {
+	matches, _ := filepath.Glob(path + ".remin-backup-*")
+	if len(matches) <= maxBackups {
+		return
+	}
+	sort.Strings(matches) // 时间戳字典序 = 时间序
+	for _, old := range matches[:len(matches)-maxBackups] {
+		_ = os.Remove(old)
+	}
 }
 
 func nowStamp() string { return timeNow().Format("20060102T150405") }

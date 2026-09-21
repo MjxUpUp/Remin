@@ -15,13 +15,29 @@
 
 ## 安装与快速开始
 
-要求：Go 1.26+、git。审收动作需要 git 身份可归因（`git config --global user.name/user.email`）。
+安装（npm，推荐）：要求 Node ≥ 18 + git。审收动作需要 git 身份可归因（`git config --global user.name/user.email`）。
 
 ```bash
-make build            # 产出 bin/remin
-export REMIN_HOME=~/.remin    # 默认即此，可省
-bin/remin init        # 创建唯一真源（git 管理的记忆仓库）
-bin/remin doctor --install    # 一键接线：注册 MCP（别名 memory）+ 会话 hooks（已装 agent 全局配置，写前备份）
+npm install -g @reminmem/remin
+remin init                 # 创建唯一真源（git 管理的记忆仓库）
+remin doctor --install     # 落位二进制到 ~/.remin/bin + 一键接线（备份 + 台账记账）
+```
+
+npm 只是获取渠道：接线钉的是 `~/.remin/bin/remin` 稳定路径，nvm 切版本 / npm 目录变化都不影响已接线配置（[ADR-0008](docs/adr/0008-distribution-lifecycle.md)）。
+
+从源码构建（开发）：要求 Go 1.26+。
+
+```bash
+make build && bin/remin init && bin/remin doctor --install
+```
+
+## 升级与卸载
+
+```bash
+remin upgrade            # npm registry → 完整性校验 → 原位原子替换落位二进制（配置零改动）
+remin upgrade --check    # 只看有无新版本
+remin uninstall          # 按接线台账精确摘除全部接线（cordis 可逆），默认保留记忆真源
+remin uninstall --purge  # 连同 ~/.remin（含全部记忆）彻底删除
 ```
 
 日常闭环：
@@ -76,7 +92,9 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 | `remin sync [--set-remote <url>]` | 多设备同步（git push/pull；远端仅托管，真源永在本地） |
 | `remin eval run [--suite trust\|roundtrip\|parity\|conflict\|budget\|all]` | 评测（规则可判定、模型无关），JSON 报告；parity 实跑 MCP stdio 通道；有失败项时退出码 1 |
 | `remin mcp` | MCP stdio server（客户端拉起，别名 memory） |
-| `remin hook-stop` / `version` | 会话结束 hook 入口（人工不常用）/ 版本与真源状态 |
+| `remin upgrade [--check]` | 自更新：npm registry → sha512 校验 → 原子替换落位；--check 只查不动 |
+| `remin uninstall [--purge]` | 按台账回放摘除全部接线与备份；--purge 连记忆真源一并删除 |
+| `remin hook-stop` / `version` | 会话结束 hook 入口（人工不常用）/ 版本与真源状态（有新版时轻提示） |
 
 面向人的命令全支持 `--json` 结构化输出（GUI/脚本可包裹——FR-UI-3）；inject/hook-stop（hook 面，永不失败文本输出）与 mcp（机面 stdio）除外。
 
@@ -117,4 +135,4 @@ make adapter-budget                 # 适配器预算（P1-N2；当前零适配�
 
 ## License
 
-待定（开源协议由项目所有者选择后在此声明）。
+[MIT](./LICENSE)
