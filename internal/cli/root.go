@@ -10,7 +10,7 @@ import (
 )
 
 // Version 产品版本（release 构建经 -ldflags -X 注入 tag 版本；源码构建回落此默认值）
-var Version = "0.3.0"
+var Version = "0.3.1"
 
 var (
 	jsonOut  bool

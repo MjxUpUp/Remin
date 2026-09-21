@@ -136,7 +136,11 @@ jobs:
           for d in dist/bin-*/; do
             plat=$(basename "$d" | sed 's/^bin-//')
             for f in "$d"*; do
-              [[ -f "$f" ]] && cp "$f" "assets/${plat}-$(basename "$f")"
+              [[ -f "$f" ]] || continue
+              base=$(basename "$f")
+              cp "$f" "assets/${plat}-${base}"
+              # upload-artifact@v4 丢执行位：二进制资产恢复 755（sha256 无所谓）
+              [[ "$base" == remin* ]] && chmod 755 "assets/${plat}-${base}"
             done
           done
           (cd dist && cat */*.sha256 > SHA256SUMS.txt)
