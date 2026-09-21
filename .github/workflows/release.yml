@@ -70,13 +70,10 @@ jobs:
           node-version: '22'
           registry-url: https://registry.npmjs.org/
       - name: 汇齐五平台二进制
-        run: |
-          mkdir -p dist
-          for plat in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
-            gh artifact download "bin-$plat" --dir "dist/$plat" || true
-          done
-        env:
-          GH_TOKEN: ${{ github.token }}
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: bin-*
       - name: 确定版本与发布模式
         id: meta
         run: |

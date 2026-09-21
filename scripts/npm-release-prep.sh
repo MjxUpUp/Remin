@@ -18,10 +18,19 @@ mkdir -p "$out"
 os_of() { case "$1" in darwin-*) echo darwin;; linux-*) echo linux;; win32-*) echo win32;; esac; }
 arch_of() { case "$1" in *-arm64) echo arm64;; *-x64) echo x64;; esac; }
 
+find_bin() { # 布局兼容：本地验证 <bindir>/<plat>/；CI download-artifact 产出 <bindir>/bin-<plat>/
+  local plat="$1" src
+  for prefix in "$plat" "bin-$plat"; do
+    for exe in remin remin.exe; do
+      src="$bindir/$prefix/$exe"
+      [[ -f "$src" ]] && { echo "$src"; return 0; }
+    done
+  done
+  return 1
+}
+
 for plat in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
-  src="$bindir/$plat/remin"
-  [[ "$plat" == win32-* ]] && src="$bindir/$plat/remin.exe"
-  [[ -f "$src" ]] || { echo "缺少二进制: $src"; exit 1; }
+  src="$(find_bin "$plat")" || { echo "缺少二进制: $bindir/$plat/remin（及 bin-$plat/ 布局）"; exit 1; }
   pkgdir="$out/$plat"
   mkdir -p "$pkgdir/bin"
   cp "$src" "$pkgdir/bin/"
