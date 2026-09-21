@@ -6,6 +6,8 @@
 
 ## 安装
 
+要求：Node ≥ 18、git。中国大陆建议镜像：`npm config set registry https://registry.npmmirror.com`；升级检查走镜像：`REMIN_NPM_REGISTRY=https://registry.npmmirror.com`。
+
 ```bash
 npm install -g @reminmem/remin
 remin init               # 创建记忆真源（~/.remin，个人 git 仓库）
@@ -18,9 +20,10 @@ npm 只是获取渠道：`doctor --install` 会把二进制落位到 `~/.remin/b
 ## 升级 / 卸载
 
 ```bash
-remin upgrade            # npm registry → 完整性校验 → 原位原子替换（配置零改动）
+remin upgrade            # npm registry → 完整性校验 → 原位替换（配置零改动）
 remin uninstall          # 按接线台账精确摘除全部接线（默认保留记忆）
 remin uninstall --purge  # 连同 ~/.remin 记忆真源一并删除
+npm uninstall -g @reminmem/remin   # 渠道命令本体收尾（remin uninstall 之后）
 ```
 
-详细文档见 [主仓库](https://github.com/remin-dev/remin)。
+详细文档见 [主仓库](https://github.com/MjxUpUp/Remin)。

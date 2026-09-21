@@ -111,7 +111,8 @@ func InstallClaudeCode(home, binPath string, takeover bool) ([]Effect, error) {
 			return nil, err
 		}
 		effects = append(effects, Effect{ID: effectID("mcp-json", global, "mcpServers.memory"),
-			Kind: "mcp-json", File: global, Key: "mcpServers.memory", Command: binPath, Backup: bk})
+			Kind: "mcp-json", File: global, Key: "mcpServers.memory", Command: binPath, Backup: bk,
+			Created: bk == ""})
 	} else {
 		effects = append(effects, Effect{ID: effectID("mcp-json", global, "mcpServers.memory"),
 			Kind: "mcp-json", File: global, Key: "mcpServers.memory", Command: binPath})
@@ -139,11 +140,12 @@ func InstallClaudeCode(home, binPath string, takeover bool) ([]Effect, error) {
 		if err != nil {
 			return nil, err
 		}
+		created := bk == ""
 		effects = append(effects,
 			Effect{ID: effectID("hook-entry", settingsPath, "SessionStart"), Kind: "hook-entry",
-				File: settingsPath, Key: "SessionStart", Command: injectCmd, Backup: bk},
+				File: settingsPath, Key: "SessionStart", Command: injectCmd, Backup: bk, Created: created},
 			Effect{ID: effectID("hook-entry", settingsPath, "Stop"), Kind: "hook-entry",
-				File: settingsPath, Key: "Stop", Command: stopCmd, Backup: bk})
+				File: settingsPath, Key: "Stop", Command: stopCmd, Backup: bk, Created: created})
 	} else {
 		effects = append(effects,
 			Effect{ID: effectID("hook-entry", settingsPath, "SessionStart"), Kind: "hook-entry",
@@ -232,7 +234,8 @@ func InstallCodex(home, binPath string, takeover bool) ([]Effect, error) {
 		return nil, err
 	}
 	return []Effect{{ID: effectID("toml-section", path, "mcp_servers.memory"),
-		Kind: "toml-section", File: path, Section: "mcp_servers.memory", Command: binPath, Backup: bk}}, nil
+		Kind: "toml-section", File: path, Section: "mcp_servers.memory", Command: binPath, Backup: bk,
+		Created: bk == ""}}, nil
 }
 
 // tomlSection 提取 [section] 段（含头，到下一个 [ 段或 EOF）。

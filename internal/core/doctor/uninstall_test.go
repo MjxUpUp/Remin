@@ -194,3 +194,36 @@ func TestUninstallPurge(t *testing.T) {
 		t.Errorf("purge 前应如实报告记忆条数: %d", rep.MemoriesBeforePurge)
 	}
 }
+
+// install 创建的文件（写前不存在）：uninstall 后整文件删除，不留空壳
+func TestUninstallRemovesCreatedFiles(t *testing.T) {
+	home := t.TempDir()
+	// 只有目录骨架，无任何配置文件——全部由 install 创建
+	for _, d := range []string{".claude", ".codex", ".cursor", ".gemini"} {
+		os.MkdirAll(filepath.Join(home, d), 0o755)
+	}
+	root := t.TempDir()
+	stagedInstall(t, home, root)
+
+	if _, err := Uninstall(home, root, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{
+		filepath.Join(home, ".claude.json"),
+		filepath.Join(home, ".claude", "settings.json"),
+		filepath.Join(home, ".codex", "config.toml"),
+		filepath.Join(home, ".gemini", "settings.json"),
+	} {
+		if _, err := os.Stat(f); !os.IsNotExist(err) {
+			t.Errorf("我们创建的文件应整删: %s", f)
+		}
+	}
+	// cursor/mcp.json：install 前 fixture 未建它（.cursor 目录存在但无文件）→ 同样应删
+	if _, err := os.Stat(filepath.Join(home, ".cursor", "mcp.json")); !os.IsNotExist(err) {
+		t.Error("我们创建的 cursor mcp.json 应整删")
+	}
+	// 目录骨架保留（那是用户/我们建的目录，删键级内容即可；目录非我们的内容载体）
+	if _, err := os.Stat(filepath.Join(home, ".claude")); err != nil {
+		t.Error("目录骨架应保留（只删我们创建的文件）")
+	}
+}

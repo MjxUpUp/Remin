@@ -11,7 +11,7 @@
 
 命名约定：产品 `Remin`（中文：随忆）｜ CLI 与二进制 `remin` ｜ 存储目录 `~/.remin/` ｜ MCP server 别名 `memory` ｜ 工具前缀 `memory_*`
 
-> **当前状态（2026-09-21）**：v0.2.0 在 feat/rebuild-product 分支从零重建完成——按[系统架构设计](docs/architecture/system-architecture.md)（技术选型见 [ADR 索引](docs/adr/README.md)）以 M0-M6 切片落地：三层架构（`adapters/` 边缘 / `internal/protocol/` 协议 / `internal/` 核心）、宪法检查全量进 CI、五来源导入、transcript 挖矿、MCP 五工具与四 agent 接线全部实现。端到端演练（`scripts/e2e-drill.sh`）14 步全通；全量测试 + `-race` + `make constitution` 全绿。
+> **当前状态（2026-09-21）**：v0.2.0 重建（feat/rebuild-product，已合 main）之上，v0.3.0 生命周期落地（feat/lifecycle-distribution，[ADR-0008](docs/adr/0008-distribution-lifecycle.md)）：npm 分发 + 落位 + 接线台账 + 自更新 + 干净卸载。端到端演练（`scripts/e2e-drill.sh`）15 步全通；全量测试 + `-race` + `make constitution` 全绿。
 
 ## 安装与快速开始
 
@@ -23,7 +23,7 @@ remin init                 # 创建唯一真源（git 管理的记忆仓库）
 remin doctor --install     # 落位二进制到 ~/.remin/bin + 一键接线（备份 + 台账记账）
 ```
 
-npm 只是获取渠道：接线钉的是 `~/.remin/bin/remin` 稳定路径，nvm 切版本 / npm 目录变化都不影响已接线配置（[ADR-0008](docs/adr/0008-distribution-lifecycle.md)）。
+npm 只是获取渠道：接线钉的是 `~/.remin/bin/remin` 稳定路径，nvm 切版本 / npm 目录变化都不影响已接线配置（[ADR-0008](docs/adr/0008-distribution-lifecycle.md)）。首个 npm 版本随 v0.3.0 tag 发布，此前请走源码构建。
 
 从源码构建（开发）：要求 Go 1.26+。
 
@@ -39,6 +39,12 @@ remin upgrade --check    # 只看有无新版本
 remin uninstall          # 按接线台账精确摘除全部接线（cordis 可逆），默认保留记忆真源
 remin uninstall --purge  # 连同 ~/.remin（含全部记忆）彻底删除
 ```
+
+说明：
+
+- `remin upgrade` 换的是落位真身（agent 接线指向它）；npm 渠道的命令副本不参与运行时，升级后可按需 `npm update -g @reminmem/remin` 同步渠道，或直接用 `~/.remin/bin/remin`。
+- `remin uninstall` 摘接线/落位/备份；npm 安装的用户另需 `npm uninstall -g @reminmem/remin` 清掉渠道命令本体。
+- 镜像源：`REMIN_NPM_REGISTRY=https://registry.npmmirror.com`（中国大陆推荐）；关闭版本检查提示：`REMIN_NO_UPGRADE_CHECK=1`。
 
 日常闭环：
 

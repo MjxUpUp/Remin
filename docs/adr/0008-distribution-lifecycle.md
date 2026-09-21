@@ -24,8 +24,8 @@ v0.2.0 的分发现实：版本号是硬编码 const、CI 只有测试门禁、�
 ### 3. 卸载：cordis 可逆性——接线台账即 undo log
 
 - `doctor --install` 的每个 effect（JSON 键 / hook 条目 / TOML 段 / gitignore 行）记入 `<root>/wiring.json`：文件、键、精确写入内容、备份路径、是否我们创建的文件。
-- `remin uninstall` 逆序回放 inverse：摘键（按点分路径下钻）、按 command 精确匹配摘 hook 条目（不动用户其它 hooks）、摘 TOML 段、摘 gitignore 行、删全部 `.remin-backup-*`、删落位、删台账、删我们创建的空壳文件。
-- 回放前校验现值仍是我们写入的值：被用户手改 → 跳过并如实报告，绝不盲删（「宁可不知道，不能自信地错」的安装面版本）。
+- `remin uninstall` 逆序回放 inverse：摘键（按点分路径下钻）、按 command 精确匹配摘 hook 条目（不动用户其它 hooks）、摘 TOML 段、摘 gitignore 行、删全部 `.remin-backup-*`、删落位、删台账、删我们创建的空壳文件（写前不存在的文件摘空后整删，五类接线目标全覆盖）。
+- 回放前校验现值仍是我们写入的值：键值类（MCP entry / TOML 段）被用户手改 → 跳过并如实报告，绝不盲删（「宁可不知道，不能自信地错」的安装面版本）；hook 命令被改写后精确匹配不到 → 视同已不存在，静默跳过（不误报不盲删）。
 - 台账丢失（v0.2.0 时代接线 / 用户删过 root）→ 退化为启发式扫描：命令 basename 为 remin 且路径含 `.remin` 或以 `/bin/remin` 结尾才摘——保守匹配，不误伤他人 memory server。
 - 真源默认保留（记忆是用户资产，P4）；`--purge` 显式 opt-in 才删，删除前如实报告记忆条数。
 
@@ -39,7 +39,7 @@ v0.2.0 的分发现实：版本号是硬编码 const、CI 只有测试门禁、�
 ### 5. 发版：tag 驱动，GitHub Actions → npm（绝不在本机 publish）
 
 - `git tag vX.Y.Z && git push --tags` → `release.yml`：五平台交叉构建（CGO_ENABLED=0，ldflags 注入版本）→ `scripts/npm-release-prep.sh` 组装 npm 包（本地验证与 CI 共用）→ 先发 5 个平台包再发主包（scoped 公开包 `--access public`）→ GitHub Release 附二进制 + SHA256SUMS。
-- workflow_dispatch 支持演练模式（构建 + npm pack 内容验证，不 publish）。
+- workflow_dispatch 默认演练模式（构建 + npm pack 内容验证，不 publish）；显式 `publish=true` 可无 tag 直接发 npm（仅跳过 GitHub Release），供补发场景。
 - 认证：仓库 secret `NPM_TOKEN`（@reminmem 组织 automation 角色）。仓库 private 期间 npm provenance 不适用；完整性由 registry integrity（sha512）与 SHA256SUMS 双重保障，转 public 后可加 `--provenance`。
 - 版本号：`cli.Version` 为 var（ldflags 注入点），源码构建回落内置默认值；Makefile 注入 `git describe`。
 
@@ -59,5 +59,5 @@ v0.2.0 的分发现实：版本号是硬编码 const、CI 只有测试门禁、�
 ## 后果
 
 - 正：四体验闭环（npm 一装 / 落位后零干扰 / upgrade 原位换身 / uninstall 台账摘净）；宪法零违反（纯 stdlib，零新依赖）；CI 发布单一通道。
-- 负：落位副本与渠道副本存在版本漂移可能（`remin version`/`doctor` 提示 `remin upgrade` 缓解）；发布依赖 NPM_TOKEN secret 一次性配置；Windows 上运行中 exe 替换依赖 rename-aside（极端情况留 `.old` 待下次清理）。
+- 负：落位副本与渠道副本存在版本漂移可能（`remin version` 主动查询时提示 `remin upgrade` 缓解）；发布依赖 NPM_TOKEN secret 一次性配置；Windows 上运行中 exe 替换依赖 rename-aside（极端情况留 `.old` 待下次清理）。
 - 后续（触发条件明确）：仓库转 public 后 release.yml 加 `--provenance`；二期上 install.sh / Homebrew tap 辅渠道；`doctor` 增加落位健康自检（钉死路径失联时主动报警并自愈重接线）。

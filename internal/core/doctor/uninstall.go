@@ -170,6 +170,12 @@ func revertEffect(e Effect) (ok bool, reason string) {
 		if len(hooks) == 0 {
 			delete(cfg, "hooks")
 		}
+		if e.Created && len(cfg) == 0 {
+			if err := os.Remove(e.File); err != nil {
+				return false, err.Error()
+			}
+			return true, ""
+		}
 		if err := writePlainJSON(e.File, cfg); err != nil {
 			return false, err.Error()
 		}
@@ -193,6 +199,12 @@ func revertEffect(e Effect) (ok bool, reason string) {
 		}
 		body = strings.Replace(body, string(section), "", 1)
 		body = collapseBlankLines(body)
+		if e.Created && strings.TrimSpace(body) == "" {
+			if err := os.Remove(e.File); err != nil {
+				return false, err.Error()
+			}
+			return true, ""
+		}
 		if err := os.WriteFile(e.File, []byte(body), 0o644); err != nil {
 			return false, err.Error()
 		}
