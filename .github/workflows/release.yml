@@ -1,8 +1,12 @@
 # 发版流水线：tag v* → 五平台交叉构建 → npm 包组装 → GitHub Release + npm 发布。
 # 发布只发生在这里（GitHub Actions → npm），绝不从开发者本机 publish。
-# 前置（一次性）：仓库 secrets 配置 NPM_TOKEN（@reminmem 组织 publish 权限，
-# automation 角色）。仓库当前 private：npm provenance 暂不适用（需 public 仓库），
-# 完整性由 registry dist.integrity（sha512）与 SHA256SUMS 双重保障。
+# 认证：npm Trusted Publishing（OIDC）——仓库零长期凭证；前置（一次性）：
+# 在 npmjs.com 为全部 6 个包名注册 Trusted Publisher（owner=MjxUpUp, repo=Remin,
+# workflow=release.yml, environment 留空），注册表见 docs/adr/0008。
+# 仓库 public：发布自带 npm provenance（供应链证明）；完整性另由 registry
+# dist.integrity（sha512）与 SHA256SUMS 双重保障。
+# 预发布验证：workflow_dispatch publish=true + 版本号带 -rc.N（dist-tag=rc，
+# 不动 latest），验证 OIDC 链路后再打正式 tag。
 name: release
 
 on:
@@ -11,16 +15,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '演练版本号（X.Y.Z，仅用于打包验证，不发布）'
+        description: '版本号（X.Y.Z 或 X.Y.Z-rc.N；rc 预发布走 dist-tag=rc）'
         required: true
         default: '0.0.0'
       publish:
         description: '真发布到 npm（默认仅演练：构建+打包不 publish）'
         type: boolean
         default: false
-
-permissions:
-  contents: write # GitHub Release
 
 jobs:
   build:
@@ -45,6 +46,13 @@ jobs:
             [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag 必须形如 vX.Y.Z（得到 ${GITHUB_REF_NAME}）"; exit 1; }
           fi
           go build ./... && go vet ./... && go test ./...
+      - name: 确定版本号（tag 运行取 tag；dispatch 取输入）
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "VERSION=v${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=v${{ inputs.version }}" >> "$GITHUB_ENV"
+          fi
       - name: 交叉构建 ${{ matrix.plat }}
         run: |
           mkdir -p dist/${{ matrix.plat }}
@@ -52,7 +60,7 @@ jobs:
           [[ "${{ matrix.goos }}" == windows ]] && exe=remin.exe
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
             go build -trimpath \
-            -ldflags "-s -w -X github.com/remin-dev/remin/internal/cli.Version=${GITHUB_REF_NAME}" \
+            -ldflags "-s -w -X github.com/remin-dev/remin/internal/cli.Version=${VERSION}" \
             -o "dist/${{ matrix.plat }}/$exe" ./cmd/remin
           cd dist/${{ matrix.plat }} && shasum -a 256 "$exe" > "$exe.sha256"
       - uses: actions/upload-artifact@v4
@@ -63,11 +71,14 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # GitHub Release
+      id-token: write   # npm Trusted Publishing（OIDC）
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24' # npm ≥11：trusted publishing OIDC 支持
           registry-url: https://registry.npmjs.org/
       - name: 汇齐五平台二进制
         uses: actions/download-artifact@v4
@@ -97,16 +108,18 @@ jobs:
           for d in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64 main; do
             (cd "$d" && npm pack --dry-run 2>&1 | tee "/tmp/pack-$d.log")
           done
-      - name: 发布到 npm（平台包 → 主包；scoped 公开包需 --access public）
+      - name: 发布到 npm（OIDC trusted publishing；平台包 → 主包；--access public）
         if: steps.meta.outputs.publish == 'true'
         run: |
           set -e
+          TAG_ARGS=()
+          if [[ "${{ steps.meta.outputs.version }}" == *-* ]]; then
+            TAG_ARGS=(--tag rc)   # 预发布不动 latest
+          fi
           for plat in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
-            (cd "npm/out/$plat" && npm publish --access public)
+            (cd "npm/out/$plat" && npm publish --access public --provenance "${TAG_ARGS[@]}")
           done
-          (cd npm/out/main && npm publish --access public)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          (cd npm/out/main && npm publish --access public --provenance "${TAG_ARGS[@]}")
       - name: GitHub Release（二进制 + SHA256SUMS）
         if: steps.meta.outputs.release == 'true'
         run: |

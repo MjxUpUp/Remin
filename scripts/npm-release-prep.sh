@@ -10,7 +10,8 @@ cd "$(dirname "$0")/.."
 ver="${1:?用法: npm-release-prep.sh <version> <binaries-dir> [out-dir]}"
 bindir="${2:?缺少 binaries-dir}"
 out="${3:-npm/dist}"
-[[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "版本号必须为 X.Y.Z: $ver"; exit 1; }
+# 正式版 X.Y.Z；预发布 X.Y.Z-rc.N（供 dispatch 验证 OIDC 链，dist-tag=rc）
+[[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "版本号必须为 X.Y.Z 或 X.Y.Z-rc.N: $ver"; exit 1; }
 bindir="$(cd "$bindir" && pwd)"
 rm -rf "$out"
 mkdir -p "$out"

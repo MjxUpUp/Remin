@@ -39,8 +39,8 @@ v0.2.0 的分发现实：版本号是硬编码 const、CI 只有测试门禁、�
 ### 5. 发版：tag 驱动，GitHub Actions → npm（绝不在本机 publish）
 
 - `git tag vX.Y.Z && git push --tags` → `release.yml`：五平台交叉构建（CGO_ENABLED=0，ldflags 注入版本）→ `scripts/npm-release-prep.sh` 组装 npm 包（本地验证与 CI 共用）→ 先发 5 个平台包再发主包（scoped 公开包 `--access public`）→ GitHub Release 附二进制 + SHA256SUMS。
-- workflow_dispatch 默认演练模式（构建 + npm pack 内容验证，不 publish）；显式 `publish=true` 可无 tag 直接发 npm（仅跳过 GitHub Release），供补发场景。
-- 认证：仓库 secret `NPM_TOKEN`（@reminmem 组织 automation 角色）。仓库 private 期间 npm provenance 不适用；完整性由 registry integrity（sha512）与 SHA256SUMS 双重保障，转 public 后可加 `--provenance`。
+- workflow_dispatch 默认演练模式（构建 + npm pack 内容验证，不 publish）；显式 `publish=true` 可无 tag 直接发 npm（仅跳过 GitHub Release），供补发场景。版本号带 `-rc.N` 时走 dist-tag `rc`（不动 `latest`），作为打正式 tag 前的 OIDC 链路验证通道。
+- 认证：npm **Trusted Publishing（OIDC）**——仓库零长期凭证（无 NPM_TOKEN secret）：publish job 持 `id-token: write`，npm ≥11 在 Actions 内自动交换 OIDC token。前置（一次性）：npmjs.com 为全部 6 个包名（`@reminmem/remin` + 五个平台包）注册 Trusted Publisher（owner=MjxUpUp / repo=Remin / workflow=release.yml / environment 留空）。仓库已 public：发布自带 `--provenance` 供应链证明；完整性另由 registry integrity（sha512）与 SHA256SUMS 双重保障。
 - 版本号：`cli.Version` 为 var（ldflags 注入点），源码构建回落内置默认值；Makefile 注入 `git describe`。
 
 ### 6. License：MIT
@@ -59,5 +59,5 @@ v0.2.0 的分发现实：版本号是硬编码 const、CI 只有测试门禁、�
 ## 后果
 
 - 正：四体验闭环（npm 一装 / 落位后零干扰 / upgrade 原位换身 / uninstall 台账摘净）；宪法零违反（纯 stdlib，零新依赖）；CI 发布单一通道。
-- 负：落位副本与渠道副本存在版本漂移可能（`remin version` 主动查询时提示 `remin upgrade` 缓解）；发布依赖 NPM_TOKEN secret 一次性配置；Windows 上运行中 exe 替换依赖 rename-aside（极端情况留 `.old` 待下次清理）。
-- 后续（触发条件明确）：仓库转 public 后 release.yml 加 `--provenance`；二期上 install.sh / Homebrew tap 辅渠道；`doctor` 增加落位健康自检（钉死路径失联时主动报警并自愈重接线）。
+- 负：落位副本与渠道副本存在版本漂移可能（`remin version` 主动查询时提示 `remin upgrade` 缓解）；OIDC 发布要求 6 个包名各注册一次 Trusted Publisher（一次性）；Windows 上运行中 exe 替换依赖 rename-aside（极端情况留 `.old` 待下次清理）。
+- 后续（触发条件明确）：二期上 install.sh / Homebrew tap 辅渠道；`doctor` 增加落位健康自检（钉死路径失联时主动报警并自愈重接线）。
