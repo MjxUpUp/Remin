@@ -8,11 +8,13 @@
 ## 任务状态
 
 - **任务**：LLM 深度提取路径（端点可配，零 SDK）——路线图首项
-- **分支**：`feat/llm-deep-extract`（工作提交：0eaeefd 主体 → 27aa9de 审查返工）；**未合入 main**
-- **门禁**：✅ task-implement → ✅ task-verify（验收 3/3 实跑）→ ✅ 完成确认 gate →
-  ✅ 独立对抗审查（8/10 PASS with P2，P2 已修）→ ✅ doc-review（95 分 round 1 pass）
-- **阻塞（唯一）**：hazard 清账——本会话一次 `rm -rf <临时目录>` 被拦（2026-09-21 17:59），
-  需用户在终端人工核查后执行 `forge hazard confirm --last`，然后重跑 `forge task complete`
+- **分支**：`feat/llm-deep-extract`（工作提交：0eaeefd 主体 → 27aa9de 审查返工 → b3c5cec 及
+  本条 HANDOFF 修正）；**待 finish 合入 main**
+- **门禁**：✅ task-implement → ✅ task-verify（验收 3/3 实跑，返工后对 HEAD 复跑仍 3/3）→
+  ✅ 完成确认 gate → ✅ 独立对抗审查（8/10 PASS with P2，P2 已修）→ ✅ doc-review
+  （round 1：95 分 @0eaeefd；round 2：92 分 @HEAD，P2/P3 已修）
+- **hazard**：本会话一次 `rm -rf <临时目录>` 被拦（17:59）——已由用户明确授权放行
+  （2026-09-21 18:47，`forge hazard confirm --last`），清账完成
 
 ## 交付内容
 
@@ -27,7 +29,8 @@
 
 ## 质量证据链（全绿，返工后复跑）
 
-- `go test -race ./...`：21 包全过（新增 21 个测试：extractor 11 / miner 4 / config 4 / cli 1 + drill 严格化）
+- `go test -race ./...`：21 包全过（新增 20 个测试：extractor 11 / miner 4 / config 4 / cli 1；
+  另有 e2e-drill 空壳断言严格化，非计数内）
 - `make constitution`：五套件 + 分层白名单依赖扫描 + 适配器预算
 - `scripts/e2e-drill.sh`：15 步 exit 0
 - 真实二进制 + mock OpenAI 端点 e2e：deep 候选 unverified/origin/ref 行号/quote 溯源/
@@ -46,12 +49,12 @@
 - finding ×4：drill 断言过期（已修）；深路径瞬时失败弃权永久性（待闲时 tick，带触发条件）；
   在途暴露面加固（多设备同步启用时复验）；溯源精度两处小瑕疵（下次动 deep.go 顺手）
 - intent ×1（test-diff 依据：全部新增测试，无改期望值放水）
-- proposal 产物已登记（specs/feat-llm-deep-extract/proposal.md）
+- proposal 产物已登记（forge 项目目录 specs/feat-llm-deep-extract/proposal.md，
+  哈希 758e1627；非仓库内路径）
 - checklist 2/2 全勾
 
 ## 下一步
 
-1. 用户终端：`forge hazard confirm --last`（核查被拦的 rm -rf 临时目录清理命令）→ `forge task complete`
-2. 合并 `feat/llm-deep-extract` → main（`forge task finish` 或手动 merge；此前的合并均用户确认后进行）
-3. 下一阶段路线图（README 如实标注）：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、
+1. `forge task finish`——hazard 已清、门禁与双轮 doc-review 全绿，直接合并到 main
+2. 下一阶段路线图（README 如实标注）：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、
    transcript 适配器扩展（Codex/DSH）、第二 agent parity 实测、端到端任务提升评测、飞书/Notion 桥、GUI
