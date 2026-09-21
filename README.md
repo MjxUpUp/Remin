@@ -23,7 +23,7 @@ remin init                 # 创建唯一真源（git 管理的记忆仓库）
 remin doctor --install     # 落位二进制到 ~/.remin/bin + 一键接线（备份 + 台账记账）
 ```
 
-npm 只是获取渠道：接线钉的是 `~/.remin/bin/remin` 稳定路径，nvm 切版本 / npm 目录变化都不影响已接线配置（[ADR-0008](docs/adr/0008-distribution-lifecycle.md)）。首个 npm 版本随 v0.3.0 tag 发布，此前请走源码构建。
+npm 只是获取渠道：接线钉的是 `~/.remin/bin/remin` 稳定路径，nvm 切版本 / npm 目录变化都不影响已接线配置（[ADR-0008](docs/adr/0008-distribution-lifecycle.md)）。
 
 从源码构建（开发）：要求 Go 1.26+。
 
