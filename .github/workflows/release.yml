@@ -108,10 +108,18 @@ jobs:
           for d in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64 main; do
             (cd "$d" && npm pack --dry-run 2>&1 | tee "/tmp/pack-$d.log")
           done
-      - name: 发布到 npm（OIDC trusted publishing；平台包 → 主包；--access public）
+      - name: 发布到 npm（OIDC；存在 NPM_TOKEN secret 时走种子模式——npm trusted publishing 不支持首版发布）
         if: steps.meta.outputs.publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -e
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            unset NODE_AUTH_TOKEN   # 纯 OIDC 模式：绝不让空 token 干扰 OIDC 探测
+            echo "认证：npm Trusted Publishing（OIDC，零长期凭证）"
+          else
+            echo "认证：NPM_TOKEN 种子模式（仅首发用：包上线并在 npmjs.com 注册 trusted publisher 后删除该 secret，自动回归纯 OIDC）"
+          fi
           TAG_ARGS=()
           if [[ "${{ steps.meta.outputs.version }}" == *-* ]]; then
             TAG_ARGS=(--tag rc)   # 预发布不动 latest

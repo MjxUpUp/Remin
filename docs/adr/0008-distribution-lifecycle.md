@@ -40,7 +40,7 @@ v0.2.0 的分发现实：版本号是硬编码 const、CI 只有测试门禁、�
 
 - `git tag vX.Y.Z && git push --tags` → `release.yml`：五平台交叉构建（CGO_ENABLED=0，ldflags 注入版本）→ `scripts/npm-release-prep.sh` 组装 npm 包（本地验证与 CI 共用）→ 先发 5 个平台包再发主包（scoped 公开包 `--access public`）→ GitHub Release 附二进制 + SHA256SUMS。
 - workflow_dispatch 默认演练模式（构建 + npm pack 内容验证，不 publish）；显式 `publish=true` 可无 tag 直接发 npm（仅跳过 GitHub Release），供补发场景。版本号带 `-rc.N` 时走 dist-tag `rc`（不动 `latest`），作为打正式 tag 前的 OIDC 链路验证通道。
-- 认证：npm **Trusted Publishing（OIDC）**——仓库零长期凭证（无 NPM_TOKEN secret）：publish job 持 `id-token: write`，npm ≥11 在 Actions 内自动交换 OIDC token。前置（一次性）：npmjs.com 为全部 6 个包名（`@reminmem/remin` + 五个平台包）注册 Trusted Publisher（owner=MjxUpUp / repo=Remin / workflow=release.yml / environment 留空）。仓库已 public：发布自带 `--provenance` 供应链证明；完整性另由 registry integrity（sha512）与 SHA256SUMS 双重保障。
+- 认证：npm **Trusted Publishing（OIDC）**为主——仓库理想态零长期凭证：publish job 持 `id-token: write`，npm ≥11 在 Actions 内自动交换 OIDC token。**已知限制**（npm/cli#8544）：trusted publishing 不能发布包的**首版**（信任策略页在包存在后才出现）；npm 的预注册能力在滚动上线、可用性因账号而异。故 workflow 为双模式：存在 `NPM_TOKEN` secret 时走种子 token（仅首发引导用），secret 删除后自动回落纯 OIDC。引导路径：种子首发 → npmjs.com 各包 Settings → Trusted publishing 注册（owner=MjxUpUp / repo=Remin / workflow=release.yml / environment 留空）→ 删 secret。仓库已 public：发布自带 `--provenance` 供应链证明；完整性另由 registry integrity（sha512）与 SHA256SUMS 双重保障。注意：package.json 的 repository.url 必须与 GitHub 仓库精确一致（npm 校验项）。
 - 版本号：`cli.Version` 为 var（ldflags 注入点），源码构建回落内置默认值；Makefile 注入 `git describe`。
 
 ### 6. License：MIT
