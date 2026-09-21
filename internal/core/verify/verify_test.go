@@ -83,6 +83,42 @@ func TestRunFailedExpiresAndBumpsVersion(t *testing.T) {
 	}
 }
 
+// superseded 是更强终态：verify 失效不改写其状态（链完整性优先）
+func TestRunFailedDoesNotOverwriteSuperseded(t *testing.T) {
+	st := testutil.NewStore(t)
+	// 直接构造 superseded 记忆（正常流由 promotion 产生；此处聚焦 verify 语义）
+	m := memWithVerify("mem_SS", "path-exists:/definitely/not/exists")
+	m.Status = store.StatusSuperseded
+	m.SupersededBy = "mem_NEW00000000000000000000000"
+	if err := st.SaveMemory(m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GitCommit(st.Root, "fixture: superseded 记忆"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(st, audit.New(st), "all", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetMemory("mem_SS")
+	if got.Status != store.StatusSuperseded || got.SupersededBy == "" {
+		t.Fatalf("superseded 不应被 verify 改写: %+v", got)
+	}
+	if v, _ := st.Version(); v != 0 {
+		t.Errorf("非 active 状态未变，不应推进版本: %d", v)
+	}
+}
+
+// file-contents 不可读（权限）≠ 不存在：unknown 待人判，绝不猜
+func TestEvaluateUnreadableFileIsUnknown(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "locked.txt")
+	os.WriteFile(p, []byte("secret"), 0o000)
+	defer os.Chmod(p, 0o644)
+	if r, _ := Evaluate("file-contains:" + p + "::secret"); r != store.VerifyUnknown {
+		t.Errorf("不可读应 unknown（待人判）: %s", r)
+	}
+}
+
 // 自然语言条件机器返回 unknown，不改变真值（不 bump）
 func TestRunUnknownNoBump(t *testing.T) {
 	st := testutil.NewStore(t)

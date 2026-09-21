@@ -64,8 +64,14 @@ var hookStopCmd = &cobra.Command{
 		if _, err := os.Stat(path); err != nil {
 			return nil
 		}
+		// 入队走 try-lock（忙则无锁追加：与 RemovePaths 的读改写竞态最坏丢一次入队，
+		// 下次 Stop 信号重排——hook 永不等待）
 		q := miner.LoadQueue(root)
-		_ = q.Append(path)
+		if acquired, _ := store.TryWithRoot(root, func() error {
+			return q.Append(path)
+		}); !acquired {
+			_ = q.Append(path)
+		}
 		spawnAsyncMine(root)
 		return nil
 	},

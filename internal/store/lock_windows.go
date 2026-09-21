@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// lockRepoNB Windows：O_EXCL 本身即 try 语义，直接复用
+var lockRepoNB = lockRepo
+
 // lockRepo Windows 无 flock：O_EXCL 锁文件 + 过期重置（尽力而为互斥；
 // 主平台 macOS/Linux 走 flock 强互斥）。
 func lockRepo(root string) (release func(), err error) {

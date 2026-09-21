@@ -23,10 +23,11 @@ func DefaultClaudeDir() string {
 
 // Options 挖矿选项
 type Options struct {
-	ClaudeDir string
-	FromQueue bool // 只处理 Stop hook 入队的 transcript
-	Force     bool // 重置游标全量重挖（兼审计）
-	DryRun    bool // 只报告不写 inbox
+	ClaudeDir  string
+	FromQueue  bool // 只处理 Stop hook 入队的 transcript
+	Force      bool // 重置游标全量重挖（兼审计）
+	DryRun     bool // 只报告不写 inbox
+	SkipLocked bool // 锁忙即让路（hook 开场追赶路径：永不阻塞，降级跳过）
 }
 
 // Report 挖矿报告
@@ -36,6 +37,7 @@ type Report struct {
 	Batch        string   `json:"batch,omitempty"`
 	AutoPromoted int      `json:"auto_promoted"`
 	Preview      []string `json:"preview,omitempty"`
+	Note         string   `json:"note,omitempty"`
 }
 
 // Mine 执行挖矿：发现 → 解析（增量游标）→ 提取 → inbox 批次（→ 快速档 recap 自动生效）。
@@ -44,14 +46,25 @@ type Report struct {
 // （promotion 自带互斥，避免嵌套自锁）。
 func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options) (*Report, error) {
 	rep := &Report{}
-	if err := store.WithRoot(st.Root, func() error {
+	mine := func() error {
 		r, err := mineLocked(ctx, st, cfg, opts)
 		if err != nil {
 			return err
 		}
 		*rep = *r
 		return nil
-	}); err != nil {
+	}
+	var err error
+	if opts.SkipLocked {
+		var acquired bool
+		acquired, err = store.TryWithRoot(st.Root, mine)
+		if err == nil && !acquired {
+			rep.Note = "跳过：真源正被其他操作占用（hook 路径不等待；下次追赶续挖）"
+		}
+	} else {
+		err = store.WithRoot(st.Root, mine)
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -166,7 +179,7 @@ func Drain(ctx context.Context, st *store.Store, cfg *config.Config, claudeDir s
 	if len(LoadQueue(st.Root).All()) == 0 {
 		return 0, nil
 	}
-	rep, err := Mine(ctx, st, cfg, Options{FromQueue: true, ClaudeDir: claudeDir})
+	rep, err := Mine(ctx, st, cfg, Options{FromQueue: true, ClaudeDir: claudeDir, SkipLocked: true})
 	if err != nil {
 		return 0, err // 追赶失败上报；inject 侧降级
 	}

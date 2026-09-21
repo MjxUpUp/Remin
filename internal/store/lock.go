@@ -27,6 +27,27 @@ func WithRoot(root string, fn func() error) error {
 	return fn()
 }
 
+// TryWithRoot 非阻塞版临界区：拿不到锁立即返回 acquired=false（hook 路径用——
+// 架构 §14「inject/hook-stop 永不阻塞」的硬约束；降级跳过优于等待）。
+func TryWithRoot(root string, fn func() error) (acquired bool, err error) {
+	mu := rootMutex(root)
+	if !mu.TryLock() {
+		return false, nil
+	}
+	defer mu.Unlock()
+
+	release, err := lockRepoNB(root)
+	if err != nil {
+		return false, nil // 跨进程锁忙：同样立即让路
+	}
+	defer release()
+
+	if err := assertCleanCriticalPaths(root); err != nil {
+		return true, err
+	}
+	return true, fn()
+}
+
 // assertCleanCriticalPaths memory/、index/VERSION、audit/ 必须无未提交变更。
 // inbox/ 不在此列：propose/mine 允许留下待审候选（它们等下一次原子提交收纳）。
 func assertCleanCriticalPaths(root string) error {

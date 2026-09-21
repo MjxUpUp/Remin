@@ -36,6 +36,29 @@ func TestPromoteAuditRecordCarriesBatch(t *testing.T) {
 	}
 }
 
+// N3 回归：跨批次 --id 采纳的审计 Batch 为逗号拼接，CLI 过滤按拆分匹配（log --batch 可查）
+func TestCrossBatchBatchFieldCommaJoined(t *testing.T) {
+	st, in, au := fixture(t)
+	_, ids1, _ := in.AddBatch("mine", []*inbox.Candidate{cand("跨批次甲", "")})
+	_, ids2, _ := in.AddBatch("manual", []*inbox.Candidate{cand("跨批次乙", "")})
+	all := append(append([]string{}, ids1...), ids2...)
+	if _, err := Promote(st, in, au, Request{CandidateIDs: all}); err != nil {
+		t.Fatal(err)
+	}
+	recs, _ := au.List(audit.ActionPromote)
+	if len(recs) != 1 {
+		t.Fatalf("应一条审计记录: %d", len(recs))
+	}
+	if !strings.Contains(recs[0].Batch, ",") {
+		t.Fatalf("跨批次应逗号拼接: %q", recs[0].Batch)
+	}
+	// 与 CLI log --batch 同口径：按逗号拆分后任一批次 id 命中
+	parts := strings.Split(recs[0].Batch, ",")
+	if len(parts) != 2 {
+		t.Fatalf("拆分应得 2 批次: %v", parts)
+	}
+}
+
 // P1-2 回归：并发 promote 串行化——版本不双分配、无半提交
 func TestConcurrentPromotesSerialize(t *testing.T) {
 	st, in, au := fixture(t)

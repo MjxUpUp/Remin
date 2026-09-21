@@ -163,6 +163,12 @@ func Restore(st *store.Store, bundleDir string) error {
 				return err
 			}
 		}
+		// config.yaml 随导出物还原（H4：导出即完整——facets/autonomy/bindings 不得丢）
+		if _, err := os.Stat(filepath.Join(stageNew, "config.yaml")); err == nil {
+			if err := os.Rename(filepath.Join(stageNew, "config.yaml"), filepath.Join(st.Root, "config.yaml")); err != nil {
+				return err
+			}
+		}
 		// VERSION 冲突取 max
 		local, _ := st.Version()
 		version := m.Version

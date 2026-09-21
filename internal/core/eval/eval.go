@@ -49,6 +49,17 @@ func run(name string, f func() []Check) *Report {
 	return rep
 }
 
+// provenanceMissing 三要素任一缺失即计为无来源（A1：无来源不落库）
+func provenanceMissing(ms []*store.Memory) int {
+	missing := 0
+	for _, m := range ms {
+		if m.Provenance.Origin == "" || m.Provenance.Ref == "" || m.Provenance.Quote == "" {
+			missing++
+		}
+	}
+	return missing
+}
+
 func check(name string, passed bool, detail string) Check {
 	return Check{Name: name, Passed: passed, Detail: detail}
 }
@@ -194,12 +205,7 @@ func SuiteTrust() *Report {
 
 		// 2. provenance 覆盖率 = 100%（无来源不落库）
 		ms, _ := st.ListMemories()
-		missing := 0
-		for _, m := range ms {
-			if m.Provenance.Origin == "" || m.Provenance.Ref == "" || m.Provenance.Quote == "" {
-				missing++
-			}
-		}
+		missing := provenanceMissing(ms)
 		checks = append(checks, check("provenance_coverage_100", missing == 0,
 			fmt.Sprintf("missing=%d/%d", missing, len(ms))))
 
@@ -290,6 +296,15 @@ func SuiteRoundtrip() *Report {
 		if _, err := promoteOne(st, in, au, "roundtrip 记忆 A", "", nil); err != nil {
 			return []Check{check("fixture", false, err.Error())}
 		}
+		// 自定义 config（facets/autonomy/bindings/remote）——restore 必须完整带回（H4）
+		cfgPath := st.ConfigPath()
+		cfgData := []byte("facets: [dev, work, life, custom-face]\nautonomy: fast\ninject_facet: work\ntool_bindings:\n  claude-code: dev\nsync_remote: git@example:u/mem.git\n")
+		if err := os.WriteFile(cfgPath, cfgData, 0o644); err != nil {
+			return []Check{check("fixture_config", false, err.Error())}
+		}
+		if _, err := store.GitCommit(st.Root, "fixture: 自定义 config"); err != nil {
+			return []Check{check("fixture_config", false, err.Error())}
+		}
 		out1, _ := os.MkdirTemp("", "remin-eval-exp1-")
 		defer os.RemoveAll(out1)
 		m1, err := exporter.Export(st, out1)
@@ -319,7 +334,13 @@ func SuiteRoundtrip() *Report {
 				}
 			}
 		}
-		return []Check{check("roundtrip_hash_equal", equal, fmt.Sprintf("%d files", len(m1.Files)))}
+		restoredCfg, rerr := os.ReadFile(st2.ConfigPath())
+		cfgPreserved := rerr == nil && string(restoredCfg) == string(cfgData)
+		return []Check{
+			check("roundtrip_hash_equal", equal, fmt.Sprintf("%d files", len(m1.Files))),
+			check("roundtrip_config_preserved", cfgPreserved,
+				fmt.Sprintf("restore 后 config.yaml %s", map[bool]string{true: "完整保留", false: "丢失/被改写"}[cfgPreserved])),
+		}
 	})
 }
 
@@ -365,10 +386,14 @@ func SuiteParity(binPath string) *Report {
 		}
 		notRetrievable := []string{}
 		retrieved := map[string]bool{}
+		mcpVersion := -1
 		for _, id := range injected {
 			res, err := client.memorySearch(bodyOf[id], 3)
 			if err != nil {
 				return []Check{check("mcp_search", false, err.Error())}
+			}
+			if res.IndexVersion > mcpVersion {
+				mcpVersion = res.IndexVersion
 			}
 			found := false
 			for _, h := range res.Results {
@@ -387,8 +412,8 @@ func SuiteParity(binPath string) *Report {
 				fmt.Sprintf("MCP 检索不到的注入记忆=%v", notRetrievable)),
 			check("mcp_serves_nothing_hidden", len(retrieved) <= len(injected),
 				fmt.Sprintf("MCP 可检索 %d / 注入 %d（MCP 不得多给不可见记忆）", len(retrieved), len(injected))),
-			check("channels_agree_on_version", len(injected) > 0,
-				fmt.Sprintf("injected=%d（两通道非空对等基线）", len(injected))),
+			check("channels_agree_on_index_version", mcpVersion == inj.Version,
+				fmt.Sprintf("MCP index_version=%d / inject v%d", mcpVersion, inj.Version)),
 		}
 	})
 }

@@ -42,17 +42,21 @@ func Pull(st *store.Store) (string, error) {
 		return "", err
 	}
 	var out string
+	var pullErr error
 	err := store.WithRoot(st.Root, func() error {
-		var err error
 		// allow-unrelated-histories：两台设备各自 remin init 后首次同步是常态（init 骨架语义一致）
-		out, err = store.GitRun(st.Root, "pull", "--no-edit", "--no-rebase", "--allow-unrelated-histories", "origin", "main")
-		return err
+		out, pullErr = store.GitRun(st.Root, "pull", "--no-edit", "--no-rebase", "--allow-unrelated-histories", "origin", "main")
+		if pullErr != nil && isMergeConflict(st) {
+			// 真冲突且仅 index/VERSION：锁内解析取 max（变更全程持锁）
+			resolved, rerr := resolveVersionConflict(st, out, pullErr)
+			if rerr != nil {
+				return rerr
+			}
+			out, pullErr = resolved, nil
+		}
+		return pullErr
 	})
 	if err != nil {
-		// 仅当确实是合并冲突时才走冲突解析；其他失败（网络等）原样上报
-		if isMergeConflict(st) {
-			return resolveVersionConflict(st, out, err)
-		}
 		return "", err
 	}
 	return out, nil

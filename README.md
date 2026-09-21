@@ -70,15 +70,15 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 | `remin search` / `status` / `log` | 检索（trust 随行）/ 单条全貌（supersession 链）/ 审收审计历史 |
 | `remin verify [id\|all]` | verify-condition 用前验证（原子回写，结果改变检索真值则版本 +1） |
 | `remin refresh` | 查看当前快照版本（MCP 会话内用 memory_refresh 推进） |
-| `remin inject` | 会话开场注入索引（hook 入口；--facet/--budget 可调） |
+| `remin inject` | 会话开场注入索引（hook 入口；--facet/--budget-ms/--max-lines 可调，facet 默认取 config `inject_facet`） |
 | `remin view [--write <path>]` | AGENTS.md 形态视图投影（默认预览；显式 opt-in 才落 repo） |
-| `remin export --out <dir>` / `restore --bundle <dir>` | 全量导出（哈希清单）/ 从导出物整库还原（roundtrip 哈希一致） |
+| `remin export --out <dir>` / `restore --bundle <dir> [--check]` | 全量导出（哈希清单）/ 从导出物整库还原（原子换入，roundtrip 哈希一致）；`--check` 只验哈希不还原 |
 | `remin sync [--set-remote <url>]` | 多设备同步（git push/pull；远端仅托管，真源永在本地） |
-| `remin eval run [--suite trust\|roundtrip\|all]` | 评测（规则可判定、模型无关），JSON 报告 |
+| `remin eval run [--suite trust\|roundtrip\|parity\|conflict\|budget\|all]` | 评测（规则可判定、模型无关），JSON 报告；parity 实跑 MCP stdio 通道；有失败项时退出码 1 |
 | `remin mcp` | MCP stdio server（客户端拉起，别名 memory） |
 | `remin hook-stop` / `version` | 会话结束 hook 入口（人工不常用）/ 版本与真源状态 |
 
-全命令支持 `--json` 结构化输出（GUI/脚本可包裹——FR-UI-3）。
+面向人的命令全支持 `--json` 结构化输出（GUI/脚本可包裹——FR-UI-3）；inject/hook-stop（hook 面，永不失败文本输出）与 mcp（机面 stdio）除外。
 
 ## 接入 agent
 
@@ -96,7 +96,7 @@ remin doctor --install    # claude-code / codex / cursor / gemini-cli 全局配�
 
 ```bash
 make build / test / race / vet      # 常规
-make constitution                   # 宪法测试套件（六项）+ 依赖扫描（P1-N1），CI 阻断合并
+make constitution                   # 宪法五套件 + 依赖扫描（P1-N1）+ 适配器预算（P1-N2），CI 阻断合并
 make adapter-budget                 # 适配器预算（P1-N2；当前零适配器代码）
 ```
 

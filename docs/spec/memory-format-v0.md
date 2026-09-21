@@ -10,7 +10,7 @@
 - `<type>` ∈ `episodic | semantic | procedural | preference | decision | spatial-context`（spatial-context 仅 schema 定义，暂无消费逻辑）
 - 文件名即 `<id>`，扩展名 `.md`
 
-## 2. frontmatter 字段（14 项）
+## 2. frontmatter 字段（16 项）
 
 | 字段 | 必填 | 类型 | 说明 |
 |---|---|---|---|
@@ -22,7 +22,7 @@
 | `supersedes` | | string | 本条替代的旧条目 id（显式 supersession，单向指针由新指旧） |
 | `superseded_by` | | string | 本条被何条替代（由 promote 事务维护） |
 | `captured_at` | ✓ | time \| `unknown` | 事实发生时间（尽量从源头还原）；无法还原如实写 `unknown`，**绝不伪造** |
-| `reviewed_at` | ✓ | time \| `unknown` | 人审时间；未经人审的通道产物在成为正式记忆前不得落 `memory/` |
+| `reviewed_at` | ✓ | time \| `unknown` | 记忆生效时间。人审通道（默认保守档）= 人审时刻；快速档自动生效的 ephemeral recap = 自动生效时刻（此时 `trust` 如实保持 `unverified`，见 config `autonomy`）。未经任一生效通道的产物不得落 `memory/` |
 | `modified` | ✓ | time | 最后修改时间（ISO 8601，带时区） |
 | `trust` | ✓ | enum | `human-verified` / `agent-claimed` / `unverified`；**永不自动升级** |
 | `source` | ✓ | enum | `agent` / `human` / `import`（写入通道类别） |
@@ -100,7 +100,7 @@ version: 1
 
 - `active`：可进入检索与注入集
 - `superseded`：被显式替代，**退出检索**；文件保留、git 历史完整可审计
-- `expired`：ephemeral 到期或验证失效；退出注入集，可经人审复活
+- `expired`：ephemeral 到期或验证失效；退出注入集。verify 失效的 expired 可经人判复活（`remin verify <id> --set passed`）；ephemeral 到期不可复活
 - `rejected`：人审拒绝后的归档态（仅存于 audit 记录，不落 `memory/`）
 
 ## 6. 不变量（违反即 bug）

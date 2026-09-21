@@ -111,8 +111,9 @@ func InstallClaudeCode(home, binPath string, takeover bool) error {
 	if hooks == nil {
 		hooks = map[string]any{}
 	}
-	injectCmd := jsonEscape(binPath) + " inject"
-	stopCmd := jsonEscape(binPath) + " hook-stop"
+	// shell 命令里的路径含空格/特殊字符必须加引号（hook 由 agent 经 shell 执行）
+	injectCmd := shellQuote(binPath) + " inject"
+	stopCmd := shellQuote(binPath) + " hook-stop"
 	hooks["SessionStart"] = appendHookOnce(hooks["SessionStart"], injectCmd)
 	hooks["Stop"] = appendHookOnce(hooks["Stop"], stopCmd)
 	sc["hooks"] = hooks
@@ -120,6 +121,11 @@ func InstallClaudeCode(home, binPath string, takeover bool) error {
 }
 
 func jsonEscape(s string) string { return strings.ReplaceAll(s, "\"", "\\\"") }
+
+// shellQuote 包裹双引号并转义内部引号与反斜杠
+func shellQuote(s string) string {
+	return "\"" + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + "\""
+}
 
 // appendHookOnce Claude Code hooks 形态：[{matcher?, hooks:[{type:command, command}]}]
 func appendHookOnce(existing any, command string) []any {

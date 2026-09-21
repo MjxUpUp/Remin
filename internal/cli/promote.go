@@ -130,7 +130,7 @@ var logCmd = &cobra.Command{
 		if logFlags.batch != "" {
 			var filtered []audit.Record
 			for _, r := range recs {
-				if r.Batch == logFlags.batch || containsID(r.IDs, logFlags.batch) {
+				if containsID(strings.Split(r.Batch, ","), logFlags.batch) || containsID(r.IDs, logFlags.batch) {
 					filtered = append(filtered, r)
 				}
 			}

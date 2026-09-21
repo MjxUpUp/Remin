@@ -35,11 +35,14 @@ var injectCmd = &cobra.Command{
 			fmt.Println("# Remin：真源未初始化（remin init），本次不注入")
 			return nil // 永不非零
 		}
+		cfg, errCfg := config.Load(st.ConfigPath())
+		if errCfg != nil {
+			cfg = config.Default() // 配置损坏降级默认值（hook 永不失败）
+		}
 		facet := injectFlags.facet
 		if facet == "" {
-			facet = "dev" // hook 默认 dev 面（工具绑定可配 config.yaml）
+			facet = cfg.InjectFacet // config.yaml inject_facet（默认 dev；工具绑定待 OP）
 		}
-		cfg, _ := config.Load(st.ConfigPath())
 		res, err := inject.Run(st, inject.Options{
 			Facet:    facet,
 			MaxLines: injectFlags.maxLines,

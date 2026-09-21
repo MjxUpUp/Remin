@@ -1,6 +1,7 @@
 package inbox
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -113,6 +114,26 @@ func TestRemoveCandidatesPartial(t *testing.T) {
 	b, _ := in.GetBatch(batch)
 	if b.Status != "partial" || len(b.Candidates) != 1 {
 		t.Errorf("应 partial 剩 1: %+v", b)
+	}
+}
+
+// 同源同日批次编号递增（nextBatchID 扫描逻辑）
+func TestBatchIDIncrements(t *testing.T) {
+	in, _ := newInbox(t)
+	b1, _, _ := in.AddBatch("mine", []*Candidate{cand("一", "")})
+	b2, _, _ := in.AddBatch("mine", []*Candidate{cand("二", "")})
+	b3, _, _ := in.AddBatch("mine", []*Candidate{cand("三", "")})
+	if b1 == b2 || b2 == b3 || b1 == b3 {
+		t.Fatalf("批次 id 应互异: %s %s %s", b1, b2, b3)
+	}
+	// 后缀严格递增（-01 -02 -03）
+	suffix := func(b string) int {
+		var n int
+		fmt.Sscanf(b[len(b)-2:], "%d", &n)
+		return n
+	}
+	if !(suffix(b1) < suffix(b2) && suffix(b2) < suffix(b3)) {
+		t.Errorf("编号应递增: %s %s %s", b1, b2, b3)
 	}
 }
 

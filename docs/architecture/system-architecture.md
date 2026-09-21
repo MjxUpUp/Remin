@@ -37,8 +37,8 @@ cmd/remin/            入口：装配 cobra 命令
 internal/cli/         CLI 命令面（人面；每命令 --json）
 internal/protocol/    MCP stdio server（机面；官方 Go SDK，仅此层可依赖它）
 internal/store/       真源仓库：git 封装、布局、记忆文件读写、frontmatter 解析
-internal/core/        领域核心：inbox/promotion/supersession/miner/extractor/
-                      verify/importer/exporter/eval/doctor/view/inject/config
+internal/core/        领域核心：inbox/promotion（含 supersession 引擎）/miner/extractor/
+                      verify/importer/exporter/eval/doctor/view/inject/config/audit/syncpkg
 internal/index/       版本化 BM25 索引（可重建加速层）
 internal/search/      检索引擎：BM25 查询、快照过滤、弃权判定
 adapters/             边缘层占位（零代码 + README 说明）
@@ -68,16 +68,22 @@ scripts/              宪法 CI 检查（依赖扫描、适配器预算）
 
 ### 4.2 记忆文件格式
 
-见 [spec v0](../spec/memory-format-v0.md)（14 frontmatter 字段、状态机、七条不变量）。
+见 [spec v0](../spec/memory-format-v0.md)（16 frontmatter 字段、状态机、七条不变量）。
 
 ### 4.3 索引与版本语义
 
 - `index/VERSION` 单调整数；每次 promotion 原子提交 +1；restore 取 max(本地, bundle)
-- 快照 = 版本 + facet + 过滤参数；同版本 + 同查询 → 同结果（确定性 BM25，固定分词与参数，按 id 稳定排序）
+- 快照 = 版本 + facet + 过滤参数；同版本 + 同查询 → 同结果（确定性 BM25，固定分词与参数，按 id 稳定排序）。
+  注：ephemeral 过期判定依赖当前墙钟（过滤参数的一部分）——同版本同查询在
+  跨越过期边界的两个时刻结果可不同，属快照定义内行为而非 H6 破坏
 - 一切注入/检索结果携带 `index_version`（可评测与重放的落点）
 - 索引损坏/缺失：由真源全量重建，用户无感
 
 ### 4.4 注入索引格式（SessionStart）
+
+> 实现现状（v0.2.0）：hook 入口（`remin inject`）无法得知调用方 agent 身份，
+> facet 取 `config.yaml` 的 `inject_facet`（默认 dev），`--facet` 可覆盖；
+> 按工具绑定的 facet 分发待开放问题 OP 决议（需 agent 身份信令）。
 
 生成规则：facet 过滤（按工具绑定）→ 状态过滤（active、未过期、verify 通过）→ 重要性排序（类型权重 × recency × 检索命中）→ **约 200 行预算**截断。每条一行：`id · 类型 · 一句话摘要 · trust 标记`；详情由 agent 经 MCP 按需拉取。尾部附 recap 候选提示（一键采纳指引 = `remin promote --batch <id>`）。
 
@@ -117,16 +123,16 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 |---|---|---|
 | `remin init` | `--root` | 创建真源 git 仓库（目录骨架、.gitignore、config.yaml、VERSION=0、首提交） |
 | `remin doctor` | `--install` `--takeover` | 检测已装 agent / 一键接线（写前备份）/ 健康检查 / 接管同名 memory server |
-| `remin propose` | `--type --facet --context --origin --ref --quote [--ephemeral]` | 显式记忆提案 → inbox（human 面通道） |
+| `remin propose` | `--type --facet --context --origin --ref --quote [--ephemeral] [--verify-condition]` | 显式记忆提案 → inbox（human 面通道） |
 | `remin mine` | `--dry-run` `--force` `--from-queue` | transcript 挖矿（claude-jsonl；增量断点续挖；--force 全量重挖） |
 | `remin import` | `--from --path --apply` | 五来源迁移；默认 dry-run 分析报告；--apply 生成 inbox 批次；幂等只报增量 |
-| `remin inbox` | `--batch --group` | 审收视图（批次分组：冲突建议排前、重复簇、普通） |
+| `remin inbox` | `--batch` | 审收视图（批次内自动分组：冲突建议排前、重复簇、普通） |
 | `remin promote` | `--batch <id> --all / --id <id>... / --except` | 人审采纳：单一原子提交 |
 | `remin reject` | `--batch <id> --all / --id <id>...` | 拒绝归档（audit 可查） |
 | `remin search` | `--facet --top-k --json` | 确定性 BM25（trust/provenance/index_version 随行；低置信 abstain） |
 | `remin status` | `<id>` | 单条全貌（supersession 链、时间戳、verify） |
 | `remin log` | `--batch --limit` | 审收审计历史（谁/何时/采纳了什么） |
-| `remin verify` | `<id> / all` | verify-condition 用前验证（原子回写；改变检索真值则版本 +1） |
+| `remin verify` | `<id> / all`、`--set passed\|failed` | verify-condition 用前验证（原子回写；改变检索真值则版本 +1）；自然语言条件经 --set 人判 |
 | `remin refresh` | | 显示当前快照版本（MCP 会话内用 memory_refresh 推进） |
 | `remin inject` | `--facet --budget-ms` | hook 入口：排空队列（硬预算）→ 快照 → 注入索引 + recap 提示；永不失败 |
 | `remin view` | `--write <path>` | AGENTS.md 形态投影（默认预览 stdout；显式 opt-in 才落盘） |
@@ -211,9 +217,9 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | roundtrip | export→restore→export 三点哈希一致；supersession 历史与 audit 完整往返 |
 | parity（宪法） | 同一 repo fixture：CLI inject 产物与 MCP memory_search 结果内容对等 |
 | conflict（宪法） | Ronaldo→Messi 事实变更集：旧事实注入率=0 |
-| budget（宪法） | SessionStart 注入含追赶 ≤ 硬预算；JIT 检索 p95 毫秒级 |
+| budget（宪法） | SessionStart 注入含追赶 ≤ 800ms 硬预算（fixture 实测）；JIT 检索延迟测量待扩 |
 
-`remin eval run` 输出 JSON 报告；`make constitution` = 宪法六项（trust/roundtrip/parity/conflict/budget/provenance-audit）+ 依赖扫描 + 适配器预算，CI 阻断合并。
+`remin eval run` 输出 JSON 报告；`make constitution` = 宪法五套件（trust 内含 provenance 覆盖率审计 / roundtrip / parity / conflict / budget）+ 依赖扫描 + 适配器预算；CI 接线后阻断合并。
 
 ## 10. 安全与隐私
 
