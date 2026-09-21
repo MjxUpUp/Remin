@@ -203,7 +203,11 @@ func TestUninstallRemovesCreatedFiles(t *testing.T) {
 		os.MkdirAll(filepath.Join(home, d), 0o755)
 	}
 	root := t.TempDir()
-	stagedInstall(t, home, root)
+	stable := stagedInstall(t, home, root)
+	// 幂等重跑（README 明示的设计内场景）：Created 标志不得被无写回放覆盖
+	if _, err := Install(home, root, stable, false); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := Uninstall(home, root, false); err != nil {
 		t.Fatal(err)

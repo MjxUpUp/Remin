@@ -79,6 +79,11 @@ func (l *Ledger) Append(e Effect) {
 	}
 	for i := range l.Effects {
 		if l.Effects[i].ID == e.ID {
+			// 创建事实不可逆：幂等重跑的新 effect 不带 Created 时保留旧记录，
+			// 否则「创建→重跑→卸载」路径空壳整删失效（R2 评审发现的残余）
+			if !e.Created {
+				e.Created = l.Effects[i].Created
+			}
 			l.Effects[i] = e
 			return
 		}
