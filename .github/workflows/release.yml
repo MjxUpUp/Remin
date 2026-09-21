@@ -128,12 +128,19 @@ jobs:
             (cd "npm/out/$plat" && npm publish --access public --provenance "${TAG_ARGS[@]}")
           done
           (cd npm/out/main && npm publish --access public --provenance "${TAG_ARGS[@]}")
-      - name: GitHub Release（二进制 + SHA256SUMS）
+      - name: GitHub Release（二进制 + SHA256SUMS；资产名加平台前缀防同名冲突）
         if: steps.meta.outputs.release == 'true'
         run: |
+          set -e
+          mkdir -p assets
+          for d in dist/bin-*/; do
+            plat=$(basename "$d" | sed 's/^bin-//')
+            for f in "$d"*; do
+              [[ -f "$f" ]] && cp "$f" "assets/${plat}-$(basename "$f")"
+            done
+          done
           (cd dist && cat */*.sha256 > SHA256SUMS.txt)
-          shopt -s nullglob
-          gh release create "${GITHUB_REF_NAME}" dist/*/* dist/SHA256SUMS.txt \
+          gh release create "${GITHUB_REF_NAME}" assets/* dist/SHA256SUMS.txt \
             --title "Remin ${GITHUB_REF_NAME}" \
             --generate-notes \
             --verify-tag
