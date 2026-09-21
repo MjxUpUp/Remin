@@ -11,7 +11,7 @@
 
 命名约定：产品 `Remin`（中文：随忆）｜ CLI 与二进制 `remin` ｜ 存储目录 `~/.remin/` ｜ MCP server 别名 `memory` ｜ 工具前缀 `memory_*`
 
-> **当前状态（2026-09-18）**：v0.2.0 重构完成——按[系统架构设计](docs/architecture/system-architecture.md)（技术选型见 [ADR 索引](docs/adr/README.md)）以 M0-M6 切片重建：三层架构（`adapters/` 边缘 / `internal/protocol/` 协议 / `internal/` 核心）、宪法四件套全量进 CI、五来源导入、transcript 挖矿、MCP 五工具与四 agent 接线全部落地。v0.1.0 实现保留在 git 历史（`67b4b6f`）仅作过程参考。
+> **当前状态（2026-09-21）**：v0.2.0 在 feat/rebuild-product 分支从零重建完成——按[系统架构设计](docs/architecture/system-architecture.md)（技术选型见 [ADR 索引](docs/adr/README.md)）以 M0-M6 切片落地：三层架构（`adapters/` 边缘 / `internal/protocol/` 协议 / `internal/` 核心）、宪法检查全量进 CI、五来源导入、transcript 挖矿、MCP 五工具与四 agent 接线全部实现。端到端演练（`scripts/e2e-drill.sh`）14 步全通；全量测试 + `-race` + `make constitution` 全绿。
 
 ## 安装与快速开始
 
@@ -104,7 +104,7 @@ make adapter-budget                 # 适配器预算（P1-N2；当前零适配�
 
 ## 路线图（如实标注未实现项）
 
-已落地（v0.2.0 重构）：核心数据层与原子审收 / 确定性 BM25 倒排检索与快照语义（JIT p95 1.3ms@10⁵ 条实测）/ MCP 五工具与快照钉住 / transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选）/ doctor 接线（claude-code/codex/cursor/gemini-cli）与注入索引 / 五来源导入 / 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip 套件）/ 宪法四件套全量进 CI。
+已落地（v0.2.0，feat/rebuild-product 重建）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）。
 
 未实现（下一阶段）：
 
