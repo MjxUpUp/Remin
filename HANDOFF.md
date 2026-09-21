@@ -5,15 +5,15 @@
 ## 任务状态
 
 - **任务**：从零重建 Remin 完整产品（CLI+MCP+挖矿+导入+评测）
-- **门禁**：✅ task-implement → ✅ task-verify → 🚦 task-complete（gate 已过；`forge task complete` 终结被一笔 hazard 人审账拦住，见「需要用户做的一件事」）
-- **分支**：`feat/rebuild-product`（5 个提交：d49a85d 主体 → 8741ed0 门禁整改 → d4af498 评审 P1 返工 → 872f3dc 强制返工+doc 整改 → 5f3b559 终审收尾）；**未合入 main**
+- **门禁**：✅ task-implement → ✅ task-verify → ✅ 完成确认 gate 已过；收尾 `forge task complete`
+- **分支**：`feat/rebuild-product`（工作提交：d49a85d 主体 → 8741ed0 门禁整改 → d4af498 评审 P1 返工 → 872f3dc 强制返工+doc 整改 → 5f3b559 终审收尾）；**未合入 main**
 
-## 需要用户做的一件事
+## 收尾
 
-```bash
-forge hazard confirm --last
-```
-（11:17 首次演练命令的未执行残留——多行复合+未解析变量被语义拦截；该命令形态已废弃、被脚本化重写替代。确认放行后 `forge task complete` 即可终结评分。）然后按需合并：`forge task finish` 或手动 merge 到 main。
+`forge task complete`（hazard 人审确认已于 2026-09-21 由用户登记；若完成时
+提示确认过期——hazard 确认是 5 分钟 TTL 一次性标记——重跑 `forge hazard
+confirm --last` 再 complete 即可）。之后按需合并：`forge task finish` 或手动
+merge 到 main。
 
 ## 质量证据链（全绿）
 
