@@ -95,9 +95,11 @@ scripts/              宪法 CI 检查（依赖扫描、适配器预算）
 Stop hook / 日志落盘 → queue.jsonl（按 transcript 路径幂等去重）
   → Miner 解析（claude-jsonl 适配器，增量游标 cursors.json）
   → Extractor 快速路径（启发式，零 LLM，硬预算内）→ inbox 批次（trust=unverified）
+  → [opt-in] Extractor 深度路径（仅手动 remin mine --deep：OpenAI 兼容端点可配，
+     quote 逐字溯源守卫——编造候选拒收，失败即弃权不拖垮快速路径）→ 同一 inbox 批次
   → 人审 promote（原子提交）
 触发点：会话结束（Stop 入队，agent 零延迟）/ 开场追赶（inject 内，硬预算 800ms，超时降级）
-        / 手动 remin mine（全量重挖，兼审计）
+        / 手动 remin mine（全量重挖，兼审计；--deep 追加深度路径——hook 路径永不触网）
 ```
 
 ### 5.2 可见性契约（快照隔离）
@@ -239,7 +241,7 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | CLI | cobra；全命令 --json | [0005](../adr/0005-cobra-cli-json.md) |
 | 边缘 | 零适配器代码（doctor 写全局配置直调 CLI） | [0006](../adr/0006-zero-adapter-edge.md) |
 | claude-mem SQLite | shell out sqlite3（系统自带），零 CGo 依赖 | [0007](../adr/0007-sqlite-shellout.md) |
-| LLM | 仅 Extractor 深度路径（端点可配）；快速路径零 LLM | 设计文档 §技术选型 |
+| LLM | 仅 Extractor 深度路径：stdlib 直连 OpenAI 兼容端点（config `llm:` 节，零 SDK），密钥走 `REMIN_LLM_API_KEY` 不落盘；快速路径零 LLM | 本仓库 README「深度提取」；内部测试用 httptest 假端点（不依赖真实模型） |
 
 ## 12. 宪法映射（验收清单）
 

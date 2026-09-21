@@ -2,8 +2,10 @@ package miner
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/remin-dev/remin/internal/core/audit"
 	"github.com/remin-dev/remin/internal/core/config"
@@ -28,6 +30,7 @@ type Options struct {
 	Force      bool // 重置游标全量重挖（兼审计）
 	DryRun     bool // 只报告不写 inbox
 	SkipLocked bool // 锁忙即让路（hook 开场追赶路径：永不阻塞，降级跳过）
+	Deep       bool // 深度提取路径（手动 mine 专用；需 config llm 节，hook 路径永不触发）
 }
 
 // Report 挖矿报告
@@ -46,6 +49,10 @@ type Report struct {
 // （promotion 自带互斥，避免嵌套自锁）。
 func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options) (*Report, error) {
 	rep := &Report{}
+	// --deep 未配置即失败前置（锁外快速失败，用户显式要求过深路径，不静默降级）
+	if opts.Deep && (cfg == nil || cfg.LLM == nil || cfg.LLM.Endpoint == "") {
+		return nil, fmt.Errorf("--deep 需要 config.yaml 配置 llm 节（endpoint/model；密钥走 REMIN_LLM_API_KEY）")
+	}
 	mine := func() error {
 		r, err := mineLocked(ctx, st, cfg, opts)
 		if err != nil {
@@ -160,6 +167,25 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 		}
 		if len(events) > 0 {
 			cands := extractor.Extract(events)
+			// 深路径（增量召回）：快速路径结果永远保留，深路径只补不替；
+			// 单 transcript 失败即弃权（Note 披露），不拖垮整批。
+			if opts.Deep && cfg != nil && cfg.LLM != nil {
+				deep, derr := extractor.ExtractDeep(ctx, cfg.LLM, events)
+				if derr != nil {
+					rep.Note = strings.TrimSpace(strings.TrimSpace(rep.Note) + " 深度提取弃权（" + firstLine(derr.Error()) + "）")
+				} else {
+					seenBodies := make(map[string]bool, len(cands))
+					for _, c := range cands {
+						seenBodies[c.Body] = true
+					}
+					for _, d := range deep {
+						if !seenBodies[d.Body] {
+							cands = append(cands, d)
+							seenBodies[d.Body] = true
+						}
+					}
+				}
+			}
 			allCands = append(allCands, cands...)
 		}
 		cursors.Set(path, Cursor{Size: info.Size(), Lines: lines})
