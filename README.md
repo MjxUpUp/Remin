@@ -86,7 +86,7 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 | `remin init` | 创建真源仓库（`--root`/`$REMIN_HOME` 可指定位置） |
 | `remin doctor [--install] [--takeover]` | 检测已装 agent / 一键接线 / 健康检查 / 接管同名 memory server |
 | `remin propose` | 显式记忆提案（进 inbox 待审） |
-| `remin mine [--dry-run] [--force] [--deep]` | transcript 挖矿（Claude Code JSONL，增量断点续挖）；`--deep` 追加 LLM 深度提取（见下方「深度提取」） |
+| `remin mine [--dry-run] [--force] [--from-queue] [--deep]` | transcript 挖矿（Claude Code JSONL，增量断点续挖）；`--deep` 追加 LLM 深度提取（见下方「深度提取」） |
 | `remin import [--from 来源] [--path 路径] [--apply]` | 从既有产品迁移（claude-auto-memory / claude-mem / chatgpt-export / codex-memories / markdown-dir；默认 dry-run，幂等只报增量；markdown-dir 为用户亲笔 → human-verified） |
 | `remin inbox` / `promote` / `reject` | 审收：批次分组 / 原子采纳 / 归档拒绝 |
 | `remin search` / `status` / `log` | 检索（trust 随行）/ 单条全貌（supersession 链）/ 审收审计历史 |
@@ -115,7 +115,7 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 - **hook 路径永不触网**：Stop hook / inject 追赶仍是纯快速路径（延迟预算硬约束）
 
 ```yaml
-# config.yaml（remin init 生成的真源内）
+# config.yaml（真源内；llm: 节需手动添加，remin init 默认不生成）
 llm:
   endpoint: https://api.example.com/v1/chat/completions  # 任意 OpenAI 兼容端点
   model: your-model
@@ -151,7 +151,7 @@ make adapter-budget                 # 适配器预算（P1-N2；当前零适配�
 
 ## 路线图（如实标注未实现项）
 
-已落地（v0.2.0，feat/rebuild-product 重建）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.3.x，feat/llm-deep-extract）。
+已落地（v0.2.0 feat/rebuild-product 重建 + v0.3.x 增量）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.3.x，feat/llm-deep-extract）。
 
 未实现（下一阶段）：
 

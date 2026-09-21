@@ -95,6 +95,49 @@ func TestMineDeepUnconfiguredFailsFast(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "llm") {
 		t.Fatalf("未配置 llm 节时 --deep 应显式报错: %v", err)
 	}
+
+	// 缺密钥同样前置拦截（评审 P2：否则逐 transcript 弃权只进 Note，
+	// 游标照常推进——该增量深提取机会永久丢失，静态配置错误不允许静默降级）
+	cfg := config.Default()
+	cfg.LLM = &config.LLMConfig{Endpoint: "http://127.0.0.1:1", Model: "m", TimeoutMs: 500}
+	_, err = Mine(context.Background(), st, cfg, Options{ClaudeDir: dir, Deep: true})
+	if err == nil || !strings.Contains(err.Error(), "REMIN_LLM_API_KEY") {
+		t.Fatalf("缺密钥应前置报错（不进挖矿循环）: %v", err)
+	}
+}
+
+// 快速路径与深路径同 body：快速路径优先，深路径重复被抑制
+func TestMineDeepSuppressesDuplicateBodies(t *testing.T) {
+	st := testutil.NewStore(t)
+	dir := t.TempDir()
+	// 带触发词的 fixture：快速路径产 1 条 typed 候选 + recap
+	tp := transcript(dir, sessID+".jsonl")
+	writeTranscript(t, tp, `{"type":"user","sessionId":"`+sessID+`","cwd":"/Users/demo/proj","timestamp":"2026-09-21T10:00:00+08:00","message":{"role":"user","content":"记住：验证统一走 make constitution，不单跑 go test"}}
+`)
+
+	srv := deepServer(t, `[{"type":"preference","body":"记住：验证统一走 make constitution，不单跑 go test","quote":"记住：验证统一走 make constitution，不单跑 go test"}]`)
+	defer srv.Close()
+
+	cfg := config.Default()
+	cfg.LLM = &config.LLMConfig{Endpoint: srv.URL, Model: "m", APIKey: "k", TimeoutMs: 3000}
+	rep, err := Mine(context.Background(), st, cfg, Options{ClaudeDir: dir, Deep: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 快速路径 typed 1 + recap 1；深路径同 body 被抑制 → 共 2
+	if rep.Candidates != 2 {
+		t.Fatalf("同 body 应被抑制（快速优先）: %+v", rep)
+	}
+	in := inbox.New(st)
+	cands, err := in.ListCandidates(rep.Batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cands {
+		if c.Provenance.Origin == "claude-code·deep" {
+			t.Errorf("与快速路径同 body 的深路径候选不应进批次: %+v", c)
+		}
+	}
 }
 
 func TestMineDeepEndpointFailureDegrades(t *testing.T) {

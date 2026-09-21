@@ -49,9 +49,11 @@ type Report struct {
 // （promotion 自带互斥，避免嵌套自锁）。
 func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options) (*Report, error) {
 	rep := &Report{}
-	// --deep 未配置即失败前置（锁外快速失败，用户显式要求过深路径，不静默降级）
-	if opts.Deep && (cfg == nil || cfg.LLM == nil || cfg.LLM.Endpoint == "") {
-		return nil, fmt.Errorf("--deep 需要 config.yaml 配置 llm 节（endpoint/model；密钥走 REMIN_LLM_API_KEY）")
+	// --deep 配置不全即失败前置（锁外快速失败，用户显式要求过深路径，不静默降级）。
+	// 缺密钥也在此拦：否则逐 transcript 弃权只进 Note，游标照常推进——
+	// 该增量的深提取机会永久丢失（评审 P2：静态可检测的配置错误不允许静默降级）
+	if opts.Deep && (cfg == nil || cfg.LLM == nil || cfg.LLM.Endpoint == "" || cfg.LLM.APIKey == "") {
+		return nil, fmt.Errorf("--deep 需要 config.yaml 配置 llm 节且设置 REMIN_LLM_API_KEY（密钥只走环境变量，不落 git 真源）")
 	}
 	mine := func() error {
 		r, err := mineLocked(ctx, st, cfg, opts)
@@ -235,14 +237,13 @@ func Drain(ctx context.Context, st *store.Store, cfg *config.Config, claudeDir s
 	return rep.Transcripts, nil
 }
 
+// firstLine 单行预览：先截行再限长（按 rune，防切中文出断尾 UTF-8）
 func firstLine(s string) string {
-	if i := len(s); i > 72 {
-		s = s[:72]
+	if i := strings.Index(s, "\n"); i >= 0 {
+		s = s[:i]
 	}
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			return s[:i]
-		}
+	if r := []rune(s); len(r) > 72 {
+		return string(r[:72])
 	}
 	return s
 }

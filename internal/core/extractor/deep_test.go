@@ -216,3 +216,59 @@ func TestExtractDeepDedupsByBody(t *testing.T) {
 		t.Errorf("同 body 应去重: %d", len(got))
 	}
 }
+
+// 响应候选数上限：超 50 条截断（防端点灌爆 inbox）
+func TestExtractDeepCapsCandidateCount(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := "这个项目跑测试别单跑 go test，要 make constitution，不然依赖扫描漏掉"
+		var parts []string
+		for i := 0; i < 80; i++ {
+			parts = append(parts, fmt.Sprintf(`{"type":"preference","body":"第 %d 条","quote":%q}`, i, q))
+		}
+		fmt.Fprint(w, openAIContent(t, "["+strings.Join(parts, ",")+"]"))
+	}))
+	defer srv.Close()
+	got, err := ExtractDeep(context.Background(), deepCfg(srv.URL), deepEvents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 50 {
+		t.Errorf("候选数应截断到 50: %d", len(got))
+	}
+}
+
+// 送入条数上限：超 200 条事件只送尾部最新（服务端实证收到的条数）
+func TestExtractDeepSendsOnlyTailEvents(t *testing.T) {
+	evtCount := make(chan int, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		// 信封/提示词均无「事件」字样，仅事件文本含——精确计送入条数
+		evtCount <- strings.Count(string(b), "事件 ")
+		fmt.Fprint(w, openAIContent(t, "[]"))
+	}))
+	defer srv.Close()
+
+	var many []Event
+	for i := 0; i < 260; i++ {
+		many = append(many, Event{Line: i + 1, Role: "user", Text: fmt.Sprintf("事件 %d", i), SessionID: "s"})
+	}
+	if _, err := ExtractDeep(context.Background(), deepCfg(srv.URL), many); err != nil {
+		t.Fatal(err)
+	}
+	// 信封/提示词均无「事件」字样，仅事件文本含——精确计送入条数
+	if gotCount := <-evtCount; gotCount != 200 {
+		t.Errorf("应只送尾部 200 条事件: %d", gotCount)
+	}
+}
+
+// 响应体超 1MB 截断 → 非法 JSON → 弃权（不部分解析）
+func TestExtractDeepRejectsOversizedResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(make([]byte, 2<<20)) // 2MB 零值字节
+	}))
+	defer srv.Close()
+	if got, err := ExtractDeep(context.Background(), deepCfg(srv.URL), deepEvents); err == nil || len(got) != 0 {
+		t.Errorf("超限响应应弃权: err=%v got=%d", err, len(got))
+	}
+}

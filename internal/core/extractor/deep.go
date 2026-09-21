@@ -19,13 +19,15 @@ import (
 	"github.com/remin-dev/remin/internal/store"
 )
 
-// 深路径硬预算（端点失控的四重上限：送入条数 / 文本长度 / 响应体 / 候选数）
+// 深路径硬预算（端点失控的五重上限：送入条数 / 文本长度 / 响应体 / 候选数 / 单次超时）。
+// 单次超时同时是 WithRoot 互斥下最坏持锁时长的上界（手动 mine --deep 串行 N 个 transcript）
 const (
 	deepMaxEvents        = 200     // 单 transcript 送入 LLM 的事件上限（取尾部最新）
 	deepMaxEventRunes    = 2000    // 单事件文本截断
 	deepMaxBodyRunes     = 300     // 候选正文上限
 	deepMaxCandidates    = 50      // 单次响应候选上限
 	deepMaxResponseBytes = 1 << 20 // 响应体 1MB
+	deepMaxTimeoutMs     = 120000  // TimeoutMs 上限（防配置笔误把锁内 IO 拖到小时级）
 	deepOrigin           = "claude-code·deep"
 )
 
@@ -76,6 +78,9 @@ func ExtractDeep(ctx context.Context, llm *config.LLMConfig, events []Event) ([]
 	timeout := time.Duration(llm.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
 		timeout = time.Duration(config.LLMDefaultTimeoutMs) * time.Millisecond
+	}
+	if max := time.Duration(deepMaxTimeoutMs) * time.Millisecond; timeout > max {
+		timeout = max
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
