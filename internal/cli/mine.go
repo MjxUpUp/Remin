@@ -62,7 +62,7 @@ var mineCmd = &cobra.Command{
 				fmt.Printf("备注: %s\n", rep.Note)
 			}
 			if rep.SkippedOld > 0 {
-				fmt.Printf("跳过 %d 个 %d 天前的 transcript（--full-history 全量重挖）\n", rep.SkippedOld, since)
+				fmt.Printf("跳过 %d 个 %d 天前的 transcript（--full-history 补挖更早；--force 重置游标重挖）\n", rep.SkippedOld, since)
 			}
 			printRootFooter(st.Root)
 			for i, p := range rep.Preview {
