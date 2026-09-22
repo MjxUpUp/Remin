@@ -32,7 +32,7 @@ type UpliftTask struct {
 type TaskResult struct {
 	Query  string   `json:"query"`
 	Pass   bool     `json:"pass"`
-	State  string   `json:"state"` // hit | miss | abstain | wrong-abstain
+	State  string   `json:"state"` // hit | miss | abstain | wrong-abstain（期望命中却弃权）| false-hit（期望弃权却命中）
 	GotIDs []string `json:"got_ids,omitempty"`
 	Detail string   `json:"detail,omitempty"`
 }
