@@ -266,3 +266,21 @@ func TestLoadUpliftTasksMutualExclusion(t *testing.T) {
 		t.Fatalf("互斥校验应报错: %v", err)
 	}
 }
+
+// TestLoadUpliftTasksValidationStates 校验三态杀灭（mutation 存活位点 uplift.go:73
+// ||→&&：空 query 有期望 / 有 query 缺期望两态都必须独立报错，缺一即被变异钻过）
+func TestLoadUpliftTasksValidationStates(t *testing.T) {
+	dir := t.TempDir()
+	// 有 query 缺期望
+	p1 := filepath.Join(dir, "no_expect.jsonl")
+	os.WriteFile(p1, []byte(`{"query":"部署"}`+"\n"), 0o644)
+	if _, err := LoadUpliftTasks(p1); err == nil || !strings.Contains(err.Error(), "缺期望") {
+		t.Fatalf("缺期望应报错: %v", err)
+	}
+	// 空 query 有期望（单独即报错——不被「缺期望」分支掩盖）
+	p2 := filepath.Join(dir, "no_query.jsonl")
+	os.WriteFile(p2, []byte(`{"expect_contains":"迁移"}`+"\n"), 0o644)
+	if _, err := LoadUpliftTasks(p2); err == nil {
+		t.Fatal("空 query 应报错")
+	}
+}
