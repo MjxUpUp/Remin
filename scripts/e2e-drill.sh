@@ -268,6 +268,19 @@ export REMIN_NOTION_TOKEN=drill-n
 "$BIN" inbox --json | python3 -c 'import json,sys;bs=json.load(sys.stdin)["data"]["batches"];assert any("import" in b["source"] for b in bs), bs; print("桥摄取 OK（human-verified 通道批次在 inbox）")' || { kill $NB_PID; exit 1; }
 "$BIN" bridge push --to notion --dry-run | grep -q "dry-run" && echo "桥 push dry-run OK" || { kill $NB_PID; exit 1; }
 kill $NB_PID 2>/dev/null
+step "20. 审收 Web 界面（remin ui：API 审收往返）"
+"$BIN" propose "UI 验证用偏好：回复一律用中文" --type preference >/dev/null || exit 1
+"$BIN" ui --port 18473 --no-open &
+UI_PID=$!
+for i in $(seq 1 20); do curl -s -m 1 -o /dev/null http://127.0.0.1:18473/api/state && break; sleep 0.5; done
+curl -fsS http://127.0.0.1:18473/api/state | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] and d["data"]["batches"], d; print("ui state OK")' || { kill $UI_PID; exit 1; }
+curl -fsS http://127.0.0.1:18473/ | grep -q "Remin" && echo "ui 首页 OK" || { kill $UI_PID; exit 1; }
+UB=$("$BIN" inbox --json | python3 -c 'import json,sys;bs=json.load(sys.stdin)["data"]["batches"];print(next(b["id"] for b in bs if b["status"]!="done" and b["pending"]>0))')
+printf '{"batch":"%s","all":true}' "$UB" > "$SB/ui-sel.json"
+curl -sS -X POST -H "Content-Type: application/json" --data-binary "@$SB/ui-sel.json" http://127.0.0.1:18473/api/promote -o "$SB/ui-promote.json" -w "http=%{http_code}" || { kill $UI_PID; exit 1; }
+cat "$SB/ui-promote.json" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] and d["data"]["Version"]>=1, d; print("ui adopt OK (atomic commit v%d)"%d["data"]["Version"])' || { kill $UI_PID; exit 1; }
+"$BIN" inbox --json | python3 -c 'import json,sys;bs=json.load(sys.stdin)["data"]["batches"];b=next(x for x in bs if x["id"]==sys.argv[1]);assert b["status"]=="done" and b["pending"]==0, b; print("ui 审收后该批次清空 OK")' "$UB" || { kill $UI_PID; exit 1; }
+kill $UI_PID 2>/dev/null
 
 echo
 echo "═══ 演练完成 ═══"

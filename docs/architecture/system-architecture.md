@@ -154,6 +154,7 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | `remin eval run` | `--suite trust/roundtrip/parity/conflict/budget/uplift/parity-live/all --out` | 评测套件（规则可判定、模型无关），JSON 报告；uplift 为端到端任务提升（基线差值归因）；parity-live 为 opt-in 真实 agent 会话通道（claude/codex 经 MCP 检索回显与核心真值比对） |
 | `remin eval uplift` / `history` | `--tasks <file>` `--record` / `--limit` | 真源任务提升实测（不写记忆真源；逐次落 eval/history.jsonl，wrong-abstain/false-hit 信号随行）/ 纵向趋势渲染（衰减曲线数据面） |
 | `remin bridge` | `pull --from notion\|feishu --apply` / `push --to notion\|feishu --facet --dry-run` | 笔记桥：平台笔记 → human-verified 摄取通道（幂等）；视图单向发布（只创建）；零 SDK，密钥走环境变量 |
+| `remin ui` | `--port` `--no-open` | 本地审收 Web 界面（127.0.0.1；包裹核心包，选择器语义与 CLI 单一事实源；Host/Origin/JSON-only 三层写防线） |
 | `remin mcp` | | MCP stdio server（客户端拉起） |
 | `remin hook-stop` | | Stop hook 入口：stdin JSON / argv 双源收 transcript 路径 → 入队 → 尽力异步触发挖矿 |
 | `remin upgrade` | `--check` | 自更新（npm registry → sha512 校验 → 原子替换落位真身） |
@@ -222,9 +223,9 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 - `memory_search` 返回自带 trust/provenance/verify_result 字段与 `index_version`——agent 必须知道自己吃到的是哪级记忆
 - abstain 是显式字段而非空数组（空数组=没有相关记忆；abstained=true=置信不足，建议向用户确认）
 
-### 8.4 GUI（下一阶段，OP-6 待定）
+### 8.4 GUI（v0 已落地：remin ui 本地 Web 审收界面；OP-6 形态待定）
 
-核心已按可包裹设计：inbox 审收界面 = `inbox --json` + `promote/reject --json`；一键接线 = `doctor --install --json`；内嵌 MCP = 拉起 `remin mcp`。GUI 只是皮肤，不引入新核心能力。
+核心已按可包裹设计：inbox 审收界面 = `inbox --json` + `promote/reject --json`；一键接线 = `doctor --install --json`；内嵌 MCP = 拉起 `remin mcp`。GUI 只是皮肤，不引入新核心能力。（v0 落地：`remin ui` 本地 Web 审收界面）
 
 ## 9. Eval Harness（模型无关，规则可判定）
 

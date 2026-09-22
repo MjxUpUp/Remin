@@ -11,7 +11,7 @@
 
 命名约定：产品 `Remin`（中文：随忆）｜ CLI 与二进制 `remin` ｜ 存储目录 `~/.remin/` ｜ MCP server 别名 `memory` ｜ 工具前缀 `memory_*`
 
-> **当前状态（2026-09-22）**：v0.2.0 重建之上，v0.3.x 生命周期与 v0.4.0 深度提取/引导体验已发版；主线推进闲时 tick、多格式适配器、live parity、uplift 评测与笔记桥（feat/idle-tick、feat/transcript-adapters、feat/agent-parity、feat/uplift-eval、feat/bridge）。端到端演练（`scripts/e2e-drill.sh`）19 步全通；全量测试 + `-race` + `make constitution` 全绿；live parity 真机证据：claude 通道通过。
+> **当前状态（2026-09-22）**：v0.2.0 重建之上，v0.3.x 生命周期与 v0.4.0 深度提取/引导体验已发版；主线推进闲时 tick、多格式适配器、live parity、uplift 评测、笔记桥与审收 Web 界面（feat/idle-tick、feat/transcript-adapters、feat/agent-parity、feat/uplift-eval、feat/bridge、feat/gui-review）——路线图代码项全部落地（余项为随使用产生的数据积累）。端到端演练（`scripts/e2e-drill.sh`）20 步全通；全量测试 + `-race` + `make constitution` 全绿；live parity 真机证据：claude 通道通过。
 
 ## 安装与快速开始
 
@@ -103,6 +103,7 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 | `remin eval history [--limit N]` | 查看实测历史与趋势（各次 recall + 相对首跑/上跑 Δ，衰减一眼可见） |
 | `remin bridge pull --from notion\|feishu [--apply]` | 笔记桥摄取：Notion 父页子页 / 飞书 wiki 文档 → markdown → importer human-verified 通道（幂等指纹；默认 dry-run，`--apply` 写 inbox）；零 SDK（stdlib 直连），密钥只走 `REMIN_NOTION_TOKEN` / `REMIN_FEISHU_APP_ID`+`REMIN_FEISHU_APP_SECRET` 环境变量（目标 ID 配 config `bridge:` 节） |
 | `remin bridge push --to notion\|feishu [--facet] [--dry-run]` | 记忆视图单向发布：view 投影 → 平台新页面（heading/段落/列表块；只创建不回写既有页面——视图是真源派生物）；`--dry-run` 只报告 |
+| `remin ui [--port N] [--no-open]` | 本地审收 Web 界面（仅绑 127.0.0.1；批次构成/候选详情/采纳/拒绝/检索/单条全貌；写操作与 CLI 同选择器语义——batch/all/id/except/type 单一事实源；写防线=回环 Host 校验（防 DNS rebinding）+ Origin 校验 + JSON-only（防跨站表单）；零前端依赖内嵌单页） |
 | `remin mcp` | MCP stdio server（客户端拉起，别名 memory） |
 | `remin upgrade [--check]` | 自更新：npm registry → sha512 校验 → 原子替换落位；--check 只查不动 |
 | `remin uninstall [--purge]` | 按台账回放摘除全部接线与备份；--purge 连记忆真源一并删除 |
@@ -158,12 +159,11 @@ make adapter-budget                 # 适配器预算（P1-N2；当前零适配�
 
 ## 路线图（如实标注未实现项）
 
-已落地（v0.2.0 feat/rebuild-product 重建 + v0.3.x 增量）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.4.0，feat/llm-deep-extract）/ 闲时增量 tick（deep 待挖队列 + `remin tick` 排空 + OS 调度器接线 launchd/systemd，无常驻 daemon；feat/idle-tick）/ 多格式 transcript 适配器（Codex rollout + DSH session，多根发现 + origin 随源归因；feat/transcript-adapters）/ 跨 agent 通道实测 parity（`eval run --suite parity-live`：真实 claude/codex 一次性会话经 MCP 检索回显与核心真值逐集比对，通道构造零全局配置污染；feat/agent-parity）/ 端到端任务提升评测（uplift 套件入 all + `eval uplift --tasks --record` 真源实测 + `eval history` 趋势，wrong-abstain 衰减信号一等公民；feat/uplift-eval）/ 飞书·Notion 笔记桥（`remin bridge pull/push`：摄取走 human-verified 幂等通道、发布是单向只创建；零 SDK 密钥不落盘；feat/bridge）。
+已落地（v0.2.0 feat/rebuild-product 重建 + v0.3.x 增量）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.4.0，feat/llm-deep-extract）/ 闲时增量 tick（deep 待挖队列 + `remin tick` 排空 + OS 调度器接线 launchd/systemd，无常驻 daemon；feat/idle-tick）/ 多格式 transcript 适配器（Codex rollout + DSH session，多根发现 + origin 随源归因；feat/transcript-adapters）/ 跨 agent 通道实测 parity（`eval run --suite parity-live`：真实 claude/codex 一次性会话经 MCP 检索回显与核心真值逐集比对，通道构造零全局配置污染；feat/agent-parity）/ 端到端任务提升评测（uplift 套件入 all + `eval uplift --tasks --record` 真源实测 + `eval history` 趋势，wrong-abstain 衰减信号一等公民；feat/uplift-eval）/ 飞书·Notion 笔记桥（`remin bridge pull/push`：摄取走 human-verified 幂等通道、发布是单向只创建；零 SDK 密钥不落盘；feat/bridge）/ GUI 审收界面（`remin ui`：本地 Web 皮肤包裹核心包，选择器语义与 CLI 单一事实源，仅回环绑定 + Host/Origin/JSON-only 三层写防线；feat/gui-review）。
 
-未实现（下一阶段）：
+未实现（随使用产生/待校准，非代码缺口）：
 
 - uplift 纵向曲线的**真实数据积累**（框架已落地：`eval uplift --record` 逐次累积；真实任务集与长期数据由使用产生）与弃权阈值校准（真源实测已暴露汉字一元分词下垃圾查询可过阈，见任务台账 finding）
-- GUI 审收界面（核心已按可包裹设计：CLI 全 `--json`）
 
 ## License
 

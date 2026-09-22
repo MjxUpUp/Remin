@@ -18,43 +18,11 @@ type selectorFlags struct {
 	typ    string // 类型分诊：批次内只作用于该类型（如 episodic 批量拒 recap）
 }
 
-// resolveIDs 解析审收选择器：--batch + --all / --id / --except / --type
+// resolveIDs 薄适配：CLI flag 形态 → inbox.Selector（语义单一事实源在 inbox 包）
 func resolveIDs(in *inbox.Inbox, sel selectorFlags, what string) ([]string, error) {
-	if len(sel.ids) > 0 {
-		if sel.typ != "" {
-			return nil, fmt.Errorf("--id 与 --type 互斥（--id 已精确指定候选）")
-		}
-		return sel.ids, nil
-	}
-	if sel.batch == "" {
-		return nil, fmt.Errorf("需要 --id <候选id...> 或 --batch <id> --all/--except")
-	}
-	cands, err := in.ListCandidates(sel.batch)
-	if err != nil {
-		return nil, err
-	}
-	except := map[string]bool{}
-	for _, e := range sel.except {
-		except[e] = true
-	}
-	var ids []string
-	for _, c := range cands {
-		if sel.typ != "" && c.Type != sel.typ {
-			continue
-		}
-		if sel.all || len(sel.except) > 0 {
-			if !except[c.ID] {
-				ids = append(ids, c.ID)
-			}
-		}
-	}
-	if len(ids) == 0 {
-		if sel.typ != "" {
-			return nil, fmt.Errorf("选择器未命中任何%s（--type %s 在该批次无候选）", what, sel.typ)
-		}
-		return nil, fmt.Errorf("选择器未命中任何%s（--all 未给？）", what)
-	}
-	return ids, nil
+	return in.ResolveIDs(inbox.Selector{
+		Batch: sel.batch, All: sel.all, IDs: sel.ids, Except: sel.except, Type: sel.typ,
+	}, what)
 }
 
 var promoteSel selectorFlags
