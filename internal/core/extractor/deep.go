@@ -232,6 +232,14 @@ func locateEvent(events []Event, quote string) (Event, bool) {
 	return Event{}, false
 }
 
+// deepOriginOf 深路径候选来源归因（随源 agent；空回退存量 claude-code·deep）
+func deepOriginOf(ev Event) string {
+	if ev.Origin != "" {
+		return ev.Origin + "·deep"
+	}
+	return deepOrigin
+}
+
 func deepCandidateFrom(body, mtype, quote string, ev Event) *inbox.Candidate {
 	c := &inbox.Candidate{}
 	c.Type = mtype
@@ -249,7 +257,7 @@ func deepCandidateFrom(body, mtype, quote string, ev Event) *inbox.Candidate {
 	c.Trust = store.TrustUnverified
 	c.Source = store.SourceAgent
 	c.Provenance = store.Provenance{
-		Origin: deepOrigin,
+		Origin: deepOriginOf(ev),
 		Ref:    refOf(ev),
 		Quote:  truncate(quote, 400),
 	}

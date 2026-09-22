@@ -39,7 +39,7 @@ func ParseClaudeJSONL(path string, fromLine int) ([]extractor.Event, int, error)
 		if err := json.Unmarshal(raw, &obj); err != nil {
 			continue // 格式漂移容错：坏行跳过不致命
 		}
-		ev := extractor.Event{Line: line, ProjectName: projectName}
+		ev := extractor.Event{Line: line, ProjectName: projectName, Origin: "claude-code"}
 		if t, ok := obj["type"].(string); ok {
 			if t != "user" && t != "assistant" {
 				continue
@@ -105,14 +105,14 @@ func projectNameFromPath(path string) string {
 	return dir
 }
 
-// Discover 扫描 dir 下全部 transcript（*.jsonl，确定性排序）
+// Discover 扫描 dir 下全部 transcript（*.jsonl 与 DSH 的 *.jsonl.zstd，确定性排序）
 func Discover(dir string) ([]string, error) {
 	var out []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // 目录缺失/权限：跳过
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".jsonl") {
+		if !info.IsDir() && (strings.HasSuffix(path, ".jsonl") || strings.HasSuffix(path, ".jsonl.zstd")) {
 			out = append(out, path)
 		}
 		return nil

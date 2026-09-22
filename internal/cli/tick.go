@@ -32,7 +32,7 @@ var tickCmd = &cobra.Command{
 			return fail(err)
 		}
 		rep, err := miner.Tick(context.Background(), st, cfg, miner.TickOptions{
-			DeepMax: tickFlags.deepMax, SinceDays: tickFlags.sinceDays, FullHistory: tickFlags.fullHistory,
+			ExtraRoots: miner.DefaultExtraRoots(), DeepMax: tickFlags.deepMax, SinceDays: tickFlags.sinceDays, FullHistory: tickFlags.fullHistory,
 		})
 		if err != nil {
 			return fail(err)

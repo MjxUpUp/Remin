@@ -19,7 +19,8 @@ const DefaultTickDeepMax = 3
 // TickOptions tick 选项
 type TickOptions struct {
 	ClaudeDir   string
-	SinceDays   int // 与 mine 同义（默认窗口防历史洪泛；tick 复发场景由游标保证增量）
+	ExtraRoots  []string // ClaudeDir 之外的发现根（与 mine 同义）
+	SinceDays   int      // 与 mine 同义（0=不限；CLI 层默认 7 防历史洪泛）
 	FullHistory bool
 	DeepMax     int // 每 tick 最多深挖的段数（<=0 取 DefaultTickDeepMax）
 }
@@ -38,7 +39,7 @@ type TickReport struct {
 // Tick 执行一次增量维护：快挖（内部自带入队）→ 深挖排空（预算内）。
 // SinceDays 语义与 mine 一致（0=不限；CLI 层默认 7 防历史洪泛）。
 func Tick(ctx context.Context, st *store.Store, cfg *config.Config, opts TickOptions) (*TickReport, error) {
-	mineOpts := Options{ClaudeDir: opts.ClaudeDir, SinceDays: opts.SinceDays}
+	mineOpts := Options{ClaudeDir: opts.ClaudeDir, ExtraRoots: opts.ExtraRoots, SinceDays: opts.SinceDays}
 	if opts.FullHistory {
 		mineOpts.SinceDays = 0
 	}
@@ -89,7 +90,7 @@ func drainDeep(ctx context.Context, st *store.Store, cfg *config.Config, opts Ti
 		if worked >= max {
 			break // 预算到：剩余留队列，下次 tick 续挖（失效段不占预算）
 		}
-		events, _, err := ParseClaudeJSONL(it.Path, it.FromLine)
+		events, _, err := ParseTranscript(it.Path, it.FromLine)
 		key := deepKey(it.Path, it.FromLine, it.ToLine)
 		if err != nil {
 			done[key] = true

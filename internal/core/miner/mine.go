@@ -27,12 +27,13 @@ func DefaultClaudeDir() string {
 // Options 挖矿选项
 type Options struct {
 	ClaudeDir  string
-	FromQueue  bool // 只处理 Stop hook 入队的 transcript
-	Force      bool // 重置游标全量重挖（兼审计）
-	DryRun     bool // 只报告不写 inbox
-	SkipLocked bool // 锁忙即让路（hook 开场追赶路径：永不阻塞，降级跳过）
-	Deep       bool // 深度提取路径（手动 mine 专用；需 config llm 节，hook 路径永不触发）
-	SinceDays  int  // 首挖限量：仅挖 mtime 近 N 天的 transcript（0=不限；发现路径专用——queue/force 不受限）
+	ExtraRoots []string // ClaudeDir 之外的发现根（codex/dsh 会话目录、自定义根；跨根去重）
+	FromQueue  bool     // 只处理 Stop hook 入队的 transcript
+	Force      bool     // 重置游标全量重挖（兼审计）
+	DryRun     bool     // 只报告不写 inbox
+	SkipLocked bool     // 锁忙即让路（hook 开场追赶路径：永不阻塞，降级跳过）
+	Deep       bool     // 深度提取路径（手动 mine 专用；需 config llm 节，hook 路径永不触发）
+	SinceDays  int      // 首挖限量：仅挖 mtime 近 N 天的 transcript（0=不限；发现路径专用——queue/force 不受限）
 }
 
 // Report 挖矿报告
@@ -141,10 +142,7 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 			}
 		}
 	} else {
-		files, err = Discover(opts.ClaudeDir)
-		if err != nil {
-			return nil, err
-		}
+		files = discoverAll(append([]string{opts.ClaudeDir}, opts.ExtraRoots...)...)
 	}
 
 	var allCands []*inbox.Candidate
@@ -175,7 +173,7 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 				fromLine = cur.Lines + 1 // 断点续挖
 			}
 		}
-		events, lines, err := ParseClaudeJSONL(path, fromLine)
+		events, lines, err := ParseTranscript(path, fromLine)
 		if err != nil {
 			continue // 单文件失败不拖垮整批（尽力而为）
 		}

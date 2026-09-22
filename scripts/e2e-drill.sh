@@ -192,6 +192,30 @@ HOME="$FAKE_HOME" PATH="$SB/shim:$PATH" "$BIN" tick schedule status --json | pyt
 HOME="$FAKE_HOME" PATH="$SB/shim:$PATH" "$BIN" tick schedule remove || exit 1
 test ! -f "$FAKE_HOME/Library/LaunchAgents/dev.reminmem.tick.plist" && echo "schedule remove OK"
 
+step "17. 多格式适配器挖矿（codex rollout + DSH session）"
+mkdir -p "$SB/codex-sessions/2026/09/22" "$SB/dsh-sessions/--Users-demo-proj--/session-aaaa1111"
+cat > "$SB/codex-sessions/2026/09/22/rollout-2026-09-22T10-00-00-aaaa1111.jsonl" <<'EOF'
+{"timestamp":"2026-09-22T09:00:00.000Z","type":"session_meta","payload":{"session_id":"aaaa1111-2222-3333-4444-555566667777","cwd":"/Users/demo/proj","cli_version":"drill"}}
+{"timestamp":"2026-09-22T09:00:05.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"记住：发布前必须先跑 changelog 检查"}]}}
+{"timestamp":"2026-09-22T09:00:10.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"好的，发布前先检查 changelog"}]}}
+EOF
+cat > "$SB/dsh-plain.jsonl" <<'EOF'
+{"type":"session","version":0,"id":"session-bbbb2222","createdAt":1787213329432,"cwd":"/Users/demo/proj2"}
+{"type":"user/message","seq":15,"time":1787213444046,"data":{"content":[{"type":"text","text":"以后所有 DSH 项目都要先跑插件验证再发布"}],"source":{"kind":"user"},"role":"user"}}
+{"type":"user/message","seq":16,"time":1787213445046,"data":{"content":[{"type":"text","text":"runtime context snapshot (plugin noise)"}],"source":{"kind":"plugin"},"role":"user"}}
+EOF
+if command -v zstd >/dev/null 2>&1; then
+  zstd -q -c "$SB/dsh-plain.jsonl" > "$SB/dsh-sessions/--Users-demo-proj--/session-aaaa1111/session.jsonl.zstd"
+  MIN_FILES=2
+else
+  echo "（zstd 不在场：DSH 压缩档解压失败被跳过属预期；DSH 解析由单测覆盖）"
+  cp "$SB/dsh-plain.jsonl" "$SB/dsh-sessions/--Users-demo-proj--/session-aaaa1111/session.jsonl.zstd"
+  MIN_FILES=1
+fi
+REMIN_CODEX_DIR="$SB/codex-sessions" REMIN_DSH_DIR="$SB/dsh-sessions" "$BIN" mine --json | python3 -c "import json,sys; d=json.load(sys.stdin)['data']; assert d['transcripts']>=$MIN_FILES, d; print('多格式发现 %d 个 transcript'%d['transcripts'])" || exit 1
+"$BIN" inbox --json | python3 -c 'import json,sys; bs=json.load(sys.stdin)["data"]["batches"]; mine=[b for b in bs if b["source"].startswith("mine") and b["status"]!="done"]; assert mine, bs; print("多格式批次 %s：%d 条候选待审"%(mine[0]["id"],mine[0]["pending"]))' || exit 1
+echo "（候选 origin 归因经单测钉死：codex/dsh/claude-code；此处验证发现与批次面）"
+
 echo
 echo "═══ 演练完成 ═══"
 echo "沙盒: ${SB}（未清理，供检查）"

@@ -20,6 +20,10 @@ func TestTickCommandJSON(t *testing.T) {
 	os.WriteFile(tp, []byte(`{"type":"user","sessionId":"s1","cwd":"/p","timestamp":"2026-09-22T10:00:00+08:00","message":{"role":"user","content":"记住：构建前先跑 go vet"}}
 `), 0o644)
 	t.Setenv("REMIN_CLAUDE_DIR", dir)
+	// 多根发现隔离：额外根指向空目录（防真实 ~/.codex、~/.dsh 泄入测试库）
+	for _, env := range []string{"REMIN_CODEX_DIR", "REMIN_DSH_DIR", "REMIN_TRANSCRIPT_ROOTS"} {
+		t.Setenv(env, t.TempDir())
+	}
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()
