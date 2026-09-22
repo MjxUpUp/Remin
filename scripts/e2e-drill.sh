@@ -223,7 +223,7 @@ echo "（候选 origin 归因经单测钉死：codex/dsh/claude-code；此处验
 step "18. uplift 任务提升实测 + 纵向历史"
 cat > "$SB/uplift-tasks.jsonl" <<'EOF'
 {"query":"迁移脚本 部署","expect_contains":"迁移"}
-{"query":"zzxxqq wwvvuu pure noise","expect_abstain":true}
+{"query":"完全无关的查询 zzxxqq","expect_abstain":true}
 EOF
 "$BIN" eval uplift --tasks "$SB/uplift-tasks.jsonl" --record --json | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];assert d["hits"]==1 and d["abstain_correct"]==1 and d["false_hits"]==0 and d["wrong_abstains"]==0, d; print("uplift 实测 OK: 1 命中 1 弃权")' || exit 1
 "$BIN" eval history | head -4

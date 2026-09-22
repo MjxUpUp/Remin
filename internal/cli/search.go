@@ -64,8 +64,11 @@ func joinArgs(args []string) string {
 }
 
 func abstainLabel(reason string) string {
-	if reason == "low_confidence" {
+	switch reason {
+	case "low_confidence":
 		return "置信不足"
+	case "word_match_required":
+		return "词级重合不足（仅散字碰撞，宁可不知道）"
 	}
 	return "无相关记忆"
 }

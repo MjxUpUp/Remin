@@ -91,7 +91,7 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 | `remin tick schedule install [--every 4h] / remove / status` | OS 调度器接线（macOS launchd / Linux systemd user timer；effect 挂接线台账，`remin uninstall` 可回放摘除；间隔下限 15m） |
 | `remin import [--from 来源] [--path 路径] [--apply]` | 从既有产品迁移（claude-auto-memory / claude-mem / chatgpt-export / codex-memories / markdown-dir；默认 dry-run，幂等只报增量；markdown-dir 为用户亲笔 → human-verified） |
 | `remin inbox [--batch <id> --type <t>]` / `promote` / `reject` | 审收：批次构成统计 + 行动指引 / 原子采纳 / 归档拒绝；`--type` 分诊（inbox 的 `--type` 配 `--batch` 详情视图生效；纯快速路径批次内 episodic 即 recap，`reject --batch <id> --all --type episodic` 一键清；--deep 批次可能含深度提取的 episodic 候选，先 `inbox --batch <id> --type episodic` 看一眼再拒） |
-| `remin search` / `status` / `log` | 检索（trust 随行）/ 单条全貌（supersession 链）/ 审收审计历史 |
+| `remin search` / `status` / `log` | 检索（trust 随行；弃权双判据：低分阈值 + 词级重合——仅散字碰撞不构成置信）/ 单条全貌（supersession 链）/ 审收审计历史 |
 | `remin verify [id\|all]` | verify-condition 用前验证（原子回写，结果改变检索真值则版本 +1） |
 | `remin refresh` | 查看当前快照版本（MCP 会话内用 memory_refresh 推进） |
 | `remin inject` | 会话开场注入索引（hook 入口；--facet/--budget-ms/--max-lines 可调，facet 默认取 config `inject_facet`） |
@@ -163,7 +163,7 @@ make adapter-budget                 # 适配器预算（P1-N2；当前零适配�
 
 未实现（随使用产生/待校准，非代码缺口）：
 
-- uplift 纵向曲线的**真实数据积累**（框架已落地：`eval uplift --record` 逐次累积；真实任务集与长期数据由使用产生）与弃权阈值校准（真源实测已暴露汉字一元分词下垃圾查询可过阈，见任务台账 finding）
+- uplift 纵向曲线的**真实数据积累**（框架已落地：`eval uplift --record` 逐次累积；真实任务集与长期数据由使用产生）
 
 ## License
 
