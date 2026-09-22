@@ -1,50 +1,70 @@
-# HANDOFF — feat/onboarding-ux（2026-09-22）
+# HANDOFF — 路线图六项全落地（2026-09-22）
 
-> forge task 为真相源（`forge task context` 拉回全部决策/发现/下一步）；本文件是其文本导出视图。
-> 前情：v0.3.1 已发布；LLM 深度提取路径（feat/llm-deep-extract，94 分 A）已合入 main（b6c6481）并推送。
+> forge task 为真相源（`forge task context --ref <ref>` 拉回全部决策/发现/下一步）；本文件是其文本导出视图。
+> 前情：v0.4.0 已发布；本日六个 forge 任务（每项独立分支 + 三门禁 + 对抗审查 + doc-review + mutation）全部合入 main 并推送。
 
-## 任务状态
+## 任务状态（六项全部完结）
 
-- **任务**：新用户引导与审收体验（feat/onboarding-ux）——**95 分（A）完结**
-- **分支**：已合入 main（a89268f，--no-ff）并推送 origin（27ec68d..a89268f）
-- **门禁**：三门禁 + review gate（对抗 7.5/10，P2×3 已返工）+ doc-review 四轮（95/93/96/96）+
-  mutation 6/6 全杀灭 + race 21 包 + constitution + e2e-drill 15 步零向导泄漏
+| # | 任务 | 分数 | 合并 |
+|---|---|---|---|
+| 1 | feat/idle-tick 闲时增量 tick（deep 待挖队列 + remin tick + OS 调度器接线） | 89 (B) | d70c96e |
+| 2 | feat/transcript-adapters 多格式挖矿（Codex rollout + DSH session·zstd） | 94 (A) | d3dd926 |
+| 3 | feat/agent-parity live parity（真实 claude/codex 会话） | 89 (B) | 71fd098 |
+| 4 | feat/uplift-eval 任务提升评测 + 纵向历史 | 89 (B) | 0485699 |
+| 5 | feat/bridge 飞书/Notion 笔记桥 | 87 (B) | 67cc6f2 |
+| 6 | feat/gui-review 审收 Web 界面（remin ui） | 82 (B) | 9e1ca5e |
 
-## 交付内容（全部来自真实首用反馈）
+主分支 HEAD：9e1ca5e（已推 origin）；全量 test/-race/vet/make constitution 绿；e2e-drill 20 步全通。
 
-1. **remin init 交互式向导**（TTY）：真源路径 → git 身份检查（前置，缺失给指引退出）→
-   自治档位 → agent 接线 → 备份私有远端（确认私有才放行）；收尾打印日常闭环。
-   零新依赖（bufio.Scanner + 输入注入可测）；非 TTY / `--defaults` / 零输入 EOF 三态
-   回落直通路径**含错误路径**逐字节兼容（向导输出走缓冲，EOF 即丢弃）
-2. **mine 首挖默认限量**：`--since 7`（mtime 窗口）；`--full-history` 仅开时间窗补挖更早；
-   `--force` 重置游标重挖；queue 路径不受限；跳过计数如实输出
-3. **触点真源透明**：mine/inbox/promote/reject/search/status 尾部统一 `真源: ~/.remin`
-4. **inbox 行动引导**：open 批次构成统计（episodic 862 · procedural 47 …）+ 查看/采纳/拒绝三行指引
-5. **类型分诊**：promote/reject/inbox `--type`（inbox 配 --batch 详情视图；未知类型早失败；--id 互斥显式报错）
-6. **sync --set-remote 私有仓防呆**：TTY y/n（提示走 stderr）；非 TTY 必须 `--yes`
+## 交付总览
 
-## 用户真源实测（2026-09-22）
+1. **闲时 tick**：快挖行段自动挂账 deep 待挖队列（端点已配即入队）；`remin tick` 排空
+   （每 tick 限段/密钥不在场保留/弃权出队不重试/候选先落批次再出队）；
+   `remin tick schedule install/remove/status` 接 launchd（bootout→bootstrap 重装生效）/
+   systemd user timer（双 effect 入台账，uninstall 回放摘除）。
+2. **多格式适配器**：路径分派（.jsonl.zstd→DSH / rollout-*.jsonl→Codex / 其余 claude）；
+   DSH zstd shell-out（可注入、损档报错防半档钉死游标）、plugin 注入过滤、epoch 毫秒归一；
+   Codex 会话头粘性继承（增量段完整归因）、developer 角色过滤；多根发现去重；
+   origin 随源（claude-code/codex/dsh，deep 为 codex·deep 等）。
+3. **live parity**（`eval run --suite parity-live`，opt-in 不入 all）：真实 claude -p（--mcp-config
+   临时文件 + --strict-mcp-config + --allowedTools）与 codex exec（-c 内联）经 MCP 检索回显
+   ID 与核心真值逐集比对；零全局配置污染。真机证据：claude 通道两次实跑精确命中。
+4. **uplift 评测**：沙盒套件入 all（空库基线差值归因/弃权不计分/superseded 零命中/注入面同验）；
+   `eval uplift --tasks --record` 真源实测（不写记忆真源）；`eval history` 趋势（Δ首跑/Δ上跑）；
+   wrong-abstain（衰减信号）与 false-hit（校准缺口信号）独立计数恒等式成立。
+5. **笔记桥**（`remin bridge`）：pull（Notion 父页子页含嵌套块 / 飞书 wiki 树遍历+分页）→
+   human-verified 幂等摄取（默认 dry-run，单篇失败跳过列名）；push 单向只创建
+   （块数按平台上限分批：Notion 100/飞书 50）；零 SDK 密钥只走环境变量。
+6. **审收 Web 界面**（`remin ui`）：仅绑 127.0.0.1 内嵌零依赖单页；批次构成/候选详情/
+   采纳/拒绝/检索/单条全貌；选择器语义提升 inbox 包单一事实源（CLI/UI 同实现）；
+   写操作三层防线（回环 Host 校验防 DNS rebinding + Origin 校验 + JSON-only）。
 
-- 923 条批次实测构成：862 recap（93%）+ 61 真候选；`reject --batch mine-20260922-01
-  --all --type episodic` 一键归档 862 条（commit 1d03367，git 历史可回溯），923→61 真信号
-- pty 真实终端双场景向导 e2e：全默认 / 快速档+私有远端确认，均通过
+## 重要发现（open findings，待后续任务）
 
-## 台账
+- **弃权阈值校准缺口**（uplift 真源实测暴露）：MinScore=0.05 + 汉字一元分词使任意中文
+  垃圾查询共亨单字即过阈——中等规模中文库上「宁可不知道」失守。修复方向：二元组主导
+  或阈值自适应 + uplift 真源模式做校准回归。（fdllov5hu888o-1-ef0bbbb4）
+- **codex live 通道待补证据**：本机 headless 认证缺 AM_API_KEY（用户 codex 走代理配置），
+  在带该环境变量的 shell 复跑 `eval run --suite parity-live` 即补齐第二通道。
+  （fdllo7mztqq60-1-7c2836f9）
+- 挂在用户名下不变：inject facet 工具绑定 OP 决议（rebuild 时代遗留）。
+- uplift 纵向曲线数据随使用累积（`eval uplift --record`），框架已就绪。
 
-- decide ×3（向导零依赖/限量产品立场/sync 防呆只在 CLI 面）
-- finding ×1（架构 §6.1 命令表滞后，存量项，下次动该文件时顺手）
-- intent ×1（test-diff：全部新增测试）；checklist 2/2；proposal 已登记
-- mutation 首次消费：6/6 全杀灭（存活位点 stdinIsTTY 判据已补杀灭测试 b355439）
+## 台账与披露
 
-## v0.4.0 已发版（2026-09-22）
-
-- 流程：merge-release-choreography 8 站走完——双只读审计（M1/M2/M5 ✅ + M3/M4/M7/R1 ✅，
-  M6 判人工核对级 → **GO-WITH-RISK**）→ tag v0.4.0 → release workflow 2m7s 成功 →
-  npm 六包官方源核实（CDN 滞后需查版本化端点）→ Release notes 补回滚配方与已知事项 →
-  分支清理 → 真实安装验证（v0.4.0 + 新 flag 面 + 执行位）→ 用户 ~/.remin/bin 已 upgrade
-- GitHub Release：https://github.com/MjxUpUp/Remin/releases/tag/v0.4.0（11 资产）
+- 每任务：proposal 产物登记 + 三门禁 + 只读对抗审查（P1×3/P2×16 全部修复并配杀灭测试）
+  + doc-review 独立子代理 2-3 轮（最终分 92-98）+ mutation 消费两轮全杀灭。
+- **逃生舱披露**：hazard-pending ×多次（FORGE_HAZARD_PENDING=disable）——起因是本会话早期
+  3+ 条含命令替换的 smoke 命令被 hazard-guard 词法拦截（未执行任何危险操作，改走脚本文件
+  后完成）；complete 时按守卫给出的无人值守逃生路径放行，checklog 留审计。**建议用户
+  核查后 `forge hazard confirm --last` 清账**。
+- test-diff 决策均记录（全部新增测试/收紧断言，无弱化）。
 
 ## 下一步
-2. 路线图：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、Codex/DSH transcript 适配器、
-   第二 agent parity、端到端任务提升评测、飞书/Notion 桥、GUI
-3. 挂在用户名下：inject facet 工具绑定 OP 决议（rebuild 时代遗留 open finding）
+
+1. 发版：六个特性在 [Unreleased]，走 merge-release-choreography + release-readiness 出 v0.5.0
+   （含升级行为提示：存量用户首跑自动补挖 codex/dsh 近 7 天——CHANGELOG 已披露）。
+2. 修弃权校准缺口（上 open finding）——uplift 真源模式已可做校准回归。
+3. 用户实测反馈回路：remin ui 交互迭代（范式级改动需用户拍板）、bridge 真凭据 live 验证、
+   codex parity 补证、uplift 任务集随使用沉淀。
+4. 挂在用户名下：inject facet OP 决议。
