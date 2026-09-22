@@ -49,6 +49,7 @@ var statusCmd = &cobra.Command{
 				fmt.Printf("  ⊕ 新 %s: %s（本条已退出检索）\n", n.ID, truncate(oneLine(n.Body), 60))
 			}
 			fmt.Printf("（索引 v%d）\n", v)
+			printRootFooter(st.Root)
 		}, map[string]interface{}{"memory": m, "superseded_older": older, "superseded_by": newer, "index_version": v})
 	},
 }

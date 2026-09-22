@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/remin-dev/remin/internal/core/audit"
 	"github.com/remin-dev/remin/internal/core/config"
@@ -31,6 +32,7 @@ type Options struct {
 	DryRun     bool // 只报告不写 inbox
 	SkipLocked bool // 锁忙即让路（hook 开场追赶路径：永不阻塞，降级跳过）
 	Deep       bool // 深度提取路径（手动 mine 专用；需 config llm 节，hook 路径永不触发）
+	SinceDays  int  // 首挖限量：仅挖 mtime 近 N 天的 transcript（0=不限；发现路径专用——queue/force 不受限）
 }
 
 // Report 挖矿报告
@@ -39,6 +41,7 @@ type Report struct {
 	Candidates   int      `json:"candidates"`
 	Batch        string   `json:"batch,omitempty"`
 	AutoPromoted int      `json:"auto_promoted"`
+	SkippedOld   int      `json:"skipped_old,omitempty"` // 因 --since 窗口跳过的老 transcript 数
 	Preview      []string `json:"preview,omitempty"`
 	Note         string   `json:"note,omitempty"`
 }
@@ -146,6 +149,11 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 
 	var allCands []*inbox.Candidate
 	mined := map[string]bool{}
+	// 首挖限量窗口（发现路径专用：queue 是刚结束的会话、force 是显式审计，均不过滤）
+	var cutoff time.Time
+	if opts.SinceDays > 0 && !opts.FromQueue && !opts.Force {
+		cutoff = time.Now().AddDate(0, 0, -opts.SinceDays)
+	}
 	for _, path := range files {
 		if ctx.Err() != nil {
 			break // 预算到：剩余留队列，下次追赶
@@ -153,6 +161,10 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 		info, err := os.Stat(path)
 		if err != nil {
 			continue
+		}
+		if !cutoff.IsZero() && info.ModTime().Before(cutoff) {
+			rep.SkippedOld++
+			continue // 老历史跳过（--full-history / --force 显式全量）
 		}
 		fromLine := 1
 		if !opts.Force {
