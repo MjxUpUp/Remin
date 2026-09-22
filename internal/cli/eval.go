@@ -21,8 +21,8 @@ var evalCmd = &cobra.Command{
 }
 
 var evalRunCmd = &cobra.Command{
-	Use:   "run [--suite trust|roundtrip|all] [--out file]",
-	Short: "运行评测（沙盒 fixture，不碰真源数据）",
+	Use:   "run [--suite trust|roundtrip|all|parity-live] [--out file]",
+	Short: "运行评测（沙盒 fixture，不碰真源数据；parity-live 需真实 agent CLI 在场）",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		bin, _ := os.Executable() // parity 套件实跑 MCP stdio 通道需要真实二进制
 		reps, err := eval.Run(evalFlags.suite, bin)
@@ -73,7 +73,7 @@ var evalRunCmd = &cobra.Command{
 }
 
 func init() {
-	evalRunCmd.Flags().StringVar(&evalFlags.suite, "suite", "all", "套件: trust/roundtrip/parity/conflict/budget/all")
+	evalRunCmd.Flags().StringVar(&evalFlags.suite, "suite", "all", "套件: trust/roundtrip/parity/conflict/budget/all；parity-live（opt-in，真实 agent 会话）")
 	evalRunCmd.Flags().StringVar(&evalFlags.out, "out", "", "报告输出文件（JSON）")
 	evalCmd.AddCommand(evalRunCmd)
 	rootCmd.AddCommand(evalCmd)
