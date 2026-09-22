@@ -2,6 +2,18 @@
 
 本文件记录 Remin（随忆）各版本的用户可感变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### 新增
+
+- **闲时增量 tick**（`remin tick`）：OS 调度器按档拉起的一次性增量维护（无常驻 daemon）——
+  增量快挖 + deep 待挖队列排空。快速路径挖过、配置了 LLM 端点的行段自动挂账待挖队列；
+  `remin tick` 每 tick 限段深挖（默认 3 段），密钥不在场保留队列，端点失败弃权出队不重试；
+  手动 `mine --deep` 深挖过的范围自动出队不重复计费；深挖候选与既有 inbox 候选跨批次去重。
+- **OS 调度器接线**（`remin tick schedule install [--every 4h] / remove / status`）：
+  macOS launchd agent / Linux systemd user timer；间隔下限 15 分钟；effect 挂接线台账，
+  `remin uninstall` 按台账回放摘除；加载 best-effort（失败给手工指引，文件已落位）。
+
 ## [0.4.0] — 2026-09-22
 
 ### 新增

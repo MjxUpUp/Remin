@@ -11,7 +11,7 @@
 
 命名约定：产品 `Remin`（中文：随忆）｜ CLI 与二进制 `remin` ｜ 存储目录 `~/.remin/` ｜ MCP server 别名 `memory` ｜ 工具前缀 `memory_*`
 
-> **当前状态（2026-09-21）**：v0.2.0 重建（feat/rebuild-product，已合 main）之上，v0.3.0 生命周期落地（feat/lifecycle-distribution，[ADR-0008](docs/adr/0008-distribution-lifecycle.md)）：npm 分发 + 落位 + 接线台账 + 自更新 + 干净卸载。端到端演练（`scripts/e2e-drill.sh`）15 步全通；全量测试 + `-race` + `make constitution` 全绿。
+> **当前状态（2026-09-22）**：v0.2.0 重建之上，v0.3.x 生命周期与 v0.4.0 深度提取/引导体验已发版；主线推进闲时增量 tick（feat/idle-tick）。端到端演练（`scripts/e2e-drill.sh`）16 步全通；全量测试 + `-race` + `make constitution` 全绿。
 
 ## 安装与快速开始
 
@@ -86,7 +86,9 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 | `remin init [--defaults]` | 创建真源仓库（`--root`/`$REMIN_HOME` 可指定位置）；TTY 下交互式向导（非 TTY 自动直通） |
 | `remin doctor [--install] [--takeover]` | 检测已装 agent / 一键接线 / 健康检查 / 接管同名 memory server |
 | `remin propose` | 显式记忆提案（进 inbox 待审） |
-| `remin mine [--dry-run] [--force] [--from-queue] [--deep] [--since N\|--full-history]` | transcript 挖矿（Claude Code JSONL，增量断点续挖）；默认仅挖 mtime 近 7 天（首挖限量防历史 recap 洪泛），`--full-history` 显式不限时间窗（补挖更早）；`--deep` 追加 LLM 深度提取（见下方「深度提取」） |
+| `remin mine [--dry-run] [--force] [--from-queue] [--deep] [--since N\|--full-history]` | transcript 挖矿（Claude Code JSONL，增量断点续挖）；默认仅挖 mtime 近 7 天（首挖限量防历史 recap 洪泛），`--full-history` 显式不限时间窗（补挖更早）；`--deep` 追加 LLM 深度提取（见下方「深度提取」）；配置 llm 端点时，快挖处理过的行段自动挂账 deep 待挖队列（闲时 tick 深挖） |
+| `remin tick [--deep-max N] [--since N\|--full-history]` | 闲时增量维护：增量快挖 + deep 待挖排空（每 tick 限段防长跑；密钥不在场保留队列；弃权段出队不重试）——供 OS 调度器按档拉起，无常驻 daemon |
+| `remin tick schedule install [--every 4h] / remove / status` | OS 调度器接线（macOS launchd / Linux systemd user timer；effect 挂接线台账，`remin uninstall` 可回放摘除；间隔下限 15m） |
 | `remin import [--from 来源] [--path 路径] [--apply]` | 从既有产品迁移（claude-auto-memory / claude-mem / chatgpt-export / codex-memories / markdown-dir；默认 dry-run，幂等只报增量；markdown-dir 为用户亲笔 → human-verified） |
 | `remin inbox [--batch <id> --type <t>]` / `promote` / `reject` | 审收：批次构成统计 + 行动指引 / 原子采纳 / 归档拒绝；`--type` 分诊（inbox 的 `--type` 配 `--batch` 详情视图生效；纯快速路径批次内 episodic 即 recap，`reject --batch <id> --all --type episodic` 一键清；--deep 批次可能含深度提取的 episodic 候选，先 `inbox --batch <id> --type episodic` 看一眼再拒） |
 | `remin search` / `status` / `log` | 检索（trust 随行）/ 单条全貌（supersession 链）/ 审收审计历史 |
@@ -113,6 +115,7 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 - **弃权优于编造**（P3-A5）：LLM 返回的每条候选必须带 `quote` 且逐字溯源到源会话文本（空白归一），对不上即拒收；端点失败/响应异常 → 该次弃权（报告 Note 披露），快速路径结果不受影响
 - **只产候选**：与快速路径同构，trust=unverified 进 inbox 人审，LLM 无落库权；origin 标注 `claude-code·deep` 可区分
 - **hook 路径永不触网**：Stop hook / inject 追赶仍是纯快速路径（延迟预算硬约束）
+- **闲时自动深挖**：快挖处理过的行段自动挂账 deep 待挖队列；`remin tick schedule install` 装 OS 调度器（launchd / systemd user timer）定期跑 `remin tick` 排空（每 tick 限段、密钥不在场保留队列、端点失败弃权出队不重试）
 
 ```yaml
 # config.yaml（真源内；llm: 节需手动添加，remin init 默认不生成）
@@ -151,11 +154,11 @@ make adapter-budget                 # 适配器预算（P1-N2；当前零适配�
 
 ## 路线图（如实标注未实现项）
 
-已落地（v0.2.0 feat/rebuild-product 重建 + v0.3.x 增量）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.4.0，feat/llm-deep-extract）。
+已落地（v0.2.0 feat/rebuild-product 重建 + v0.3.x 增量）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.4.0，feat/llm-deep-extract）/ 闲时增量 tick（deep 待挖队列 + `remin tick` 排空 + OS 调度器接线 launchd/systemd，无常驻 daemon；feat/idle-tick）。
 
 未实现（下一阶段）：
 
-- 闲时增量 tick（OS 调度器档位）与 transcript 格式适配器扩展（Codex/DSH 日志；当前仅 claude-jsonl）；深度提取的自动触发挂在闲时 tick 上
+- transcript 格式适配器扩展（Codex/DSH 日志；当前仅 claude-jsonl）
 - 跨 agent 通道实测 parity eval 扩展（当前为 CLI 注入 × MCP 检索双通道；待接入真实第二 agent 会话）
 - 端到端任务提升评测与纵向衰减曲线（需真实任务集与长期数据）
 - 飞书 / Notion 笔记桥（摄取 human-verified + 单向发布回视图）

@@ -64,7 +64,7 @@ type deepResponse struct {
 }
 
 // ExtractDeep 深度提取：LLM 语义理解补充快速路径的召回（regex 抓不到的自然表达）。
-// 只挂手动 remin mine --deep；Stop hook 与 inject 追赶路径永不触网（延迟预算硬约束）。
+// 挂手动 remin mine --deep 与闲时 tick 排空；Stop hook 与 inject 追赶路径永不触网（延迟预算硬约束）。
 func ExtractDeep(ctx context.Context, llm *config.LLMConfig, events []Event) ([]*inbox.Candidate, error) {
 	if llm == nil || llm.Endpoint == "" {
 		return nil, fmt.Errorf("深度提取未配置：config.yaml 缺 llm.endpoint（端点可配，OpenAI 兼容）")

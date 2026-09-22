@@ -60,7 +60,7 @@ scripts/              宪法 CI 检查（依赖扫描、适配器预算）
   index/VERSION            索引版本号（单调递增，入 git；promotion 事务 +1）
   index/bm25-<ver>.json    BM25 索引数据（可重建，不入 git）
   views/                   生成视图（可重建，不入 git）
-  transcripts-cache/       挖矿队列 queue.jsonl、增量游标 cursors.json、指纹（不入 git）
+  transcripts-cache/       挖矿队列 queue.jsonl、deep 待挖队列 deep-queue.jsonl、增量游标 cursors.json、指纹（不入 git）
   config.yaml              facet 定义、自治档位、工具绑定、同步远端（入 git）
 ```
 
@@ -95,13 +95,17 @@ scripts/              宪法 CI 检查（依赖扫描、适配器预算）
 Stop hook / 日志落盘 → queue.jsonl（按 transcript 路径幂等去重）
   → Miner 解析（claude-jsonl 适配器，增量游标 cursors.json）
   → Extractor 快速路径（启发式，零 LLM，硬预算内）→ inbox 批次（trust=unverified）
-  → [opt-in] Extractor 深度路径（仅手动 remin mine --deep：OpenAI 兼容端点可配，
-     quote 逐字溯源守卫——编造候选拒收，失败即弃权不拖垮快速路径）→ 同一 inbox 批次
+  → [opt-in] Extractor 深度路径（手动 remin mine --deep 或闲时 tick 排空 deep 待挖队列：
+     OpenAI 兼容端点可配，quote 逐字溯源守卫——编造候选拒收，失败即弃权不拖垮快速路径）
+     → inbox 批次（mine --deep 并入同批；tick 深挖独立成批并跨批次 body 去重）
   → 人审 promote（原子提交）
 触发点：会话结束（Stop 入队，agent 零延迟）/ 开场追赶（inject 内，硬预算 800ms，超时降级）
         / 手动 remin mine（默认 mtime 近 7 天限量——防首日历史 recap 洪泛；--full-history 仅开时间窗补挖
           从未建游标的更早文件，重置游标重挖审计用 --force；--deep 追加深度路径——hook 路径永不触网；
           queue/force 不受时间窗限制）
+        / 闲时 tick（OS 调度器按档拉起一次性 remin tick：增量快挖 + deep 待挖队列排空
+          （每 tick 预算限段，密钥不在场保留队列；配置 llm 端点时快挖挂账 deep-queue.jsonl——
+          手动 --deep 按实际深挖区间出队不重复计费；无常驻 daemon））
 ```
 
 ### 5.2 可见性契约（快照隔离）
@@ -128,23 +132,27 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | `remin init` | `--root` | 创建真源 git 仓库（目录骨架、.gitignore、config.yaml、VERSION=0、首提交） |
 | `remin doctor` | `--install` `--takeover` | 检测已装 agent / 一键接线（写前备份）/ 健康检查 / 接管同名 memory server |
 | `remin propose` | `--type --facet --context --origin --ref --quote [--ephemeral] [--verify-condition]` | 显式记忆提案 → inbox（human 面通道） |
-| `remin mine` | `--dry-run` `--force` `--from-queue` | transcript 挖矿（claude-jsonl；增量断点续挖；--force 全量重挖） |
+| `remin mine` | `--dry-run` `--force` `--from-queue` `--deep` `--since\|--full-history` | transcript 挖矿（claude-jsonl；增量断点续挖；--force 全量重挖；--deep 追加 LLM 深度路径；快挖自动挂账 deep 待挖队列） |
+| `remin tick` | `--deep-max` `--since\|--full-history` | 闲时增量维护：增量快挖 + deep 待挖排空（OS 调度器按档拉起，无常驻 daemon；弃权段出队不重试） |
+| `remin tick schedule` | `install --every` / `remove` / `status` | OS 调度器接线（macOS launchd / Linux systemd user timer；effect 挂接线台账，uninstall 回放摘除） |
 | `remin import` | `--from --path --apply` | 五来源迁移；默认 dry-run 分析报告；--apply 生成 inbox 批次；幂等只报增量 |
-| `remin inbox` | `--batch` | 审收视图（批次内自动分组：冲突建议排前、重复簇、普通） |
-| `remin promote` | `--batch <id> --all / --id <id>... / --except` | 人审采纳：单一原子提交 |
-| `remin reject` | `--batch <id> --all / --id <id>...` | 拒绝归档（audit 可查） |
+| `remin inbox` | `--batch` `--type` | 审收视图（批次构成统计 + 行动指引；--batch 详情视图配 --type 分诊） |
+| `remin promote` | `--batch <id> --all / --id <id>... / --except` `--type` | 人审采纳：单一原子提交 |
+| `remin reject` | `--batch <id> --all / --id <id>...` `--except` `--type` | 拒绝归档（audit 可查） |
 | `remin search` | `--facet --top-k --json` | 确定性 BM25（trust/provenance/index_version 随行；低置信 abstain） |
 | `remin status` | `<id>` | 单条全貌（supersession 链、时间戳、verify） |
 | `remin log` | `--batch --limit` | 审收审计历史（谁/何时/采纳了什么） |
 | `remin verify` | `<id> / all`、`--set passed\|failed` | verify-condition 用前验证（原子回写；改变检索真值则版本 +1）；自然语言条件经 --set 人判 |
 | `remin refresh` | | 显示当前快照版本（MCP 会话内用 memory_refresh 推进） |
-| `remin inject` | `--facet --budget-ms` | hook 入口：排空队列（硬预算）→ 快照 → 注入索引 + recap 提示；永不失败 |
-| `remin view` | `--write <path>` | AGENTS.md 形态投影（默认预览 stdout；显式 opt-in 才落盘） |
-| `remin export` / `restore` | `--out <dir>` / `--bundle <dir>` | 全量导出（sha256 清单）/ 整库还原（roundtrip 哈希一致；唯一绕过 inbox 的通道——还原的是已人审的库） |
-| `remin sync` | `--set-remote <url>` `--push/--pull` | git push/pull 包装（远端仅托管；VERSION 冲突取 max） |
-| `remin eval run` | `--suite trust/roundtrip/all --out` | 评测套件（规则可判定、模型无关），JSON 报告 |
+| `remin inject` | `--facet --budget-ms --max-lines` | hook 入口：排空队列（硬预算）→ 快照 → 注入索引 + recap 提示；永不失败 |
+| `remin view` | `--write <path>` `--facet` | AGENTS.md 形态投影（默认预览 stdout；显式 opt-in 才落盘） |
+| `remin export` / `restore` | `--out <dir>` / `--bundle <dir>` `--check` | 全量导出（sha256 清单）/ 整库还原（roundtrip 哈希一致；唯一绕过 inbox 的通道——还原的是已人审的库） |
+| `remin sync` | `--set-remote <url>` `--yes` `--push/--pull` | git push/pull 包装（远端仅托管；VERSION 冲突取 max） |
+| `remin eval run` | `--suite trust/roundtrip/parity/conflict/budget/all --out` | 评测套件（规则可判定、模型无关），JSON 报告 |
 | `remin mcp` | | MCP stdio server（客户端拉起） |
 | `remin hook-stop` | | Stop hook 入口：stdin JSON / argv 双源收 transcript 路径 → 入队 → 尽力异步触发挖矿 |
+| `remin upgrade` | `--check` | 自更新（npm registry → sha512 校验 → 原子替换落位真身） |
+| `remin uninstall` | `--purge` | 台账回放摘除全部接线；--purge 连真源一并删除（默认保留用户资产） |
 | `remin version` | | 版本与真源状态 |
 
 ### 6.2 MCP 工具协议（stdio；server 别名 `memory`）
