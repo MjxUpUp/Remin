@@ -14,6 +14,10 @@ export REMIN_HOME="$SB/remin-store"
 VB_FILE="$SB/vb.txt"
 export REMIN_TRANSCRIPT_ROOTS="$SB/claude/projects"
 export REMIN_CLAUDE_DIR="$SB/claude/projects"
+# 多根发现隔离：防止真实 ~/.codex、~/.dsh 会话泄入演练（步骤 17 按命令内联覆盖）
+export REMIN_CODEX_DIR="$SB/codex-empty"
+export REMIN_DSH_DIR="$SB/dsh-empty"
+mkdir -p "$REMIN_CODEX_DIR" "$REMIN_DSH_DIR"
 export GIT_AUTHOR_NAME="演练用户" GIT_AUTHOR_EMAIL=demo@remin.local
 export GIT_COMMITTER_NAME="演练用户" GIT_COMMITTER_EMAIL=demo@remin.local
 
@@ -224,6 +228,46 @@ EOF
 "$BIN" eval uplift --tasks "$SB/uplift-tasks.jsonl" --record --json | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];assert d["hits"]==1 and d["abstain_correct"]==1 and d["false_hits"]==0 and d["wrong_abstains"]==0, d; print("uplift 实测 OK: 1 命中 1 弃权")' || exit 1
 "$BIN" eval history | head -4
 "$BIN" eval history --json | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];assert d and d[-1]["recall"]>0, d; print("历史往返 OK: recall=%.2f"%d[-1]["recall"])' || exit 1
+step "19. 笔记桥（假 Notion 端点：pull 摄取 + push dry-run）"
+python3 - <<'PYEOF' &
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        body = b'{}'
+        if self.path.endswith('/v1/blocks/parent1/children'):
+            body = json.dumps({"results":[{"id":"p1","type":"child_page","child_page":{"title":"部署手册"}}]}).encode()
+        elif self.path.endswith('/v1/blocks/p1/children'):
+            body = json.dumps({"results":[{"type":"paragraph","paragraph":{"rich_text":[{"text":{"content":"先跑迁移再发布"}}]}}]}).encode()
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        body = json.dumps({"id":"newp","url":"https://notion.so/newp"}).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *a): pass
+HTTPServer(('127.0.0.1', 18472), H).serve_forever()
+PYEOF
+NB_PID=$!
+sleep 0.5
+cat >> "$REMIN_HOME/config.yaml" <<'CFGEOF' || { kill $NB_PID; exit 1; }
+bridge:
+  notion:
+    api_base: http://127.0.0.1:18472
+    parent_page_id: parent1
+CFGEOF
+export REMIN_NOTION_TOKEN=drill-n
+"$BIN" bridge pull --from notion --apply >/dev/null || { kill $NB_PID; exit 1; }
+"$BIN" inbox --json | python3 -c 'import json,sys;bs=json.load(sys.stdin)["data"]["batches"];assert any("import" in b["source"] for b in bs), bs; print("桥摄取 OK（human-verified 通道批次在 inbox）")' || { kill $NB_PID; exit 1; }
+"$BIN" bridge push --to notion --dry-run | grep -q "dry-run" && echo "桥 push dry-run OK" || { kill $NB_PID; exit 1; }
+kill $NB_PID 2>/dev/null
 
 echo
 echo "═══ 演练完成 ═══"
