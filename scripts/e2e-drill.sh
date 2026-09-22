@@ -216,6 +216,15 @@ REMIN_CODEX_DIR="$SB/codex-sessions" REMIN_DSH_DIR="$SB/dsh-sessions" "$BIN" min
 "$BIN" inbox --json | python3 -c 'import json,sys; bs=json.load(sys.stdin)["data"]["batches"]; mine=[b for b in bs if b["source"].startswith("mine") and b["status"]!="done"]; assert mine, bs; print("多格式批次 %s：%d 条候选待审"%(mine[0]["id"],mine[0]["pending"]))' || exit 1
 echo "（候选 origin 归因经单测钉死：codex/dsh/claude-code；此处验证发现与批次面）"
 
+step "18. uplift 任务提升实测 + 纵向历史"
+cat > "$SB/uplift-tasks.jsonl" <<'EOF'
+{"query":"迁移脚本 部署","expect_contains":"迁移"}
+{"query":"zzxxqq wwvvuu pure noise","expect_abstain":true}
+EOF
+"$BIN" eval uplift --tasks "$SB/uplift-tasks.jsonl" --record --json | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];assert d["hits"]==1 and d["abstain_correct"]==1 and d["false_hits"]==0 and d["wrong_abstains"]==0, d; print("uplift 实测 OK: 1 命中 1 弃权")' || exit 1
+"$BIN" eval history | head -4
+"$BIN" eval history --json | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];assert d and d[-1]["recall"]>0, d; print("历史往返 OK: recall=%.2f"%d[-1]["recall"])' || exit 1
+
 echo
 echo "═══ 演练完成 ═══"
 echo "沙盒: ${SB}（未清理，供检查）"
