@@ -1,59 +1,44 @@
-# HANDOFF — feat/llm-deep-extract（2026-09-21）
+# HANDOFF — feat/onboarding-ux（2026-09-22）
 
 > forge task 为真相源（`forge task context` 拉回全部决策/发现/下一步）；本文件是其文本导出视图。
-> 前情：v0.2.0 重建（feat/rebuild-product）与 v0.3.x 分发生命周期（feat/lifecycle-distribution、
-> fix/release-exec-bit）均已完成合入 main；v0.3.1 已发布（GitHub Release + npm 双侧，安装冒烟过，
-> 执行位热修验证生效）。
+> 前情：v0.3.1 已发布；LLM 深度提取路径（feat/llm-deep-extract，94 分 A）已合入 main（b6c6481）并推送。
 
 ## 任务状态
 
-- **任务**：LLM 深度提取路径（端点可配，零 SDK）——路线图首项
-- **分支**：`feat/llm-deep-extract`（工作提交：0eaeefd 主体 → 27aa9de 审查返工 → b3c5cec/2ed7baf
-  HANDOFF 修正）；**已合入 main（b6c6481，--no-ff）**
-- **门禁**：✅ task-implement → ✅ task-verify（验收 3/3 实跑，返工后对 HEAD 复跑仍 3/3）→
-  ✅ 完成确认 gate → ✅ 独立对抗审查（8/10 PASS with P2，P2 已修）→ ✅ doc-review
-  （round 1：95 分 @0eaeefd；round 2：92 分 @HEAD，P2/P3 已修）
-- **hazard**：本会话一次 `rm -rf <临时目录>` 被拦（17:59）——已由用户明确授权放行
-  （2026-09-21 18:47，`forge hazard confirm --last`），清账完成
+- **任务**：新用户引导与审收体验（feat/onboarding-ux）——**95 分（A）完结**
+- **分支**：已合入 main（a89268f，--no-ff）并推送 origin（27ec68d..a89268f）
+- **门禁**：三门禁 + review gate（对抗 7.5/10，P2×3 已返工）+ doc-review 四轮（95/93/96/96）+
+  mutation 6/6 全杀灭 + race 21 包 + constitution + e2e-drill 15 步零向导泄漏
 
-## 交付内容
+## 交付内容（全部来自真实首用反馈）
 
-- `remin mine --deep`：stdlib 零 SDK 直连 OpenAI 兼容端点；config `llm:` 节
-  （endpoint/model/timeout_ms，缺省即全系统零 LLM 不变）；密钥只走 `REMIN_LLM_API_KEY`
-  （config.yaml 在 git 真源内不落密钥）
-- **quote 逐字溯源守卫**（P3-A5）：LLM 候选引文空白归一后必须命中源事件文本，编造即拒收；
-  类型白名单外拒收；端点失败弃权（Note 披露）不拖垮快速路径；只产 unverified inbox 候选
-  （origin=claude-code·deep，ref 定位事件行号）；hook 路径永不触网
-- 审查返工：缺密钥 fail-fast（原会静默弃权且游标推进=深提取机会永久丢失）、
-  TimeoutMs 120s 上限、firstLine rune 截断、4 个守卫测试补洞
+1. **remin init 交互式向导**（TTY）：真源路径 → git 身份检查（前置，缺失给指引退出）→
+   自治档位 → agent 接线 → 备份私有远端（确认私有才放行）；收尾打印日常闭环。
+   零新依赖（bufio.Scanner + 输入注入可测）；非 TTY / `--defaults` / 零输入 EOF 三态
+   回落直通路径**含错误路径**逐字节兼容（向导输出走缓冲，EOF 即丢弃）
+2. **mine 首挖默认限量**：`--since 7`（mtime 窗口）；`--full-history` 仅开时间窗补挖更早；
+   `--force` 重置游标重挖；queue 路径不受限；跳过计数如实输出
+3. **触点真源透明**：mine/inbox/promote/reject/search/status 尾部统一 `真源: ~/.remin`
+4. **inbox 行动引导**：open 批次构成统计（episodic 862 · procedural 47 …）+ 查看/采纳/拒绝三行指引
+5. **类型分诊**：promote/reject/inbox `--type`（inbox 配 --batch 详情视图；未知类型早失败；--id 互斥显式报错）
+6. **sync --set-remote 私有仓防呆**：TTY y/n（提示走 stderr）；非 TTY 必须 `--yes`
 
-## 质量证据链（全绿，返工后复跑）
+## 用户真源实测（2026-09-22）
 
-- `go test -race ./...`：21 包全过（新增 20 个测试：extractor 11 / miner 4 / config 4 / cli 1；
-  另有 e2e-drill 空壳断言严格化，非计数内）
-- `make constitution`：五套件 + 分层白名单依赖扫描 + 适配器预算
-- `scripts/e2e-drill.sh`：15 步 exit 0
-- 真实二进制 + mock OpenAI 端点 e2e：deep 候选 unverified/origin/ref 行号/quote 溯源/
-  编造拒收/未配置与缺密钥错误面，逐项验证通过
-
-## 本会话顺手修的 main 既有缺陷
-
-- e2e-drill step15 断言过期：lifecycle 引入「install 创建的空壳整删」后，fixture 中从零创建的
-  `.claude.json`/`.claude/settings.json`/`.codex/config.toml` 卸载后被删净，旧断言仍要求存在——
-  main 干净构建复现确认。已修为严格正向断言（空壳必须整删）+ 演练自建二进制（根除陈旧
-  二进制假绿——此前 v0.2 时代二进制把过期断言跑绿过）。finding 已登记。
+- 923 条批次实测构成：862 recap（93%）+ 61 真候选；`reject --batch mine-20260922-01
+  --all --type episodic` 一键归档 862 条（commit 1d03367，git 历史可回溯），923→61 真信号
+- pty 真实终端双场景向导 e2e：全默认 / 快速档+私有远端确认，均通过
 
 ## 台账
 
-- decide ×2（零 SDK + env-only 密钥；只挂手动 mine --deep，hook 永不触网）
-- finding ×4：drill 断言过期（已修）；深路径瞬时失败弃权永久性（待闲时 tick，带触发条件）；
-  在途暴露面加固（多设备同步启用时复验）；溯源精度两处小瑕疵（下次动 deep.go 顺手）
-- intent ×1（test-diff 依据：全部新增测试，无改期望值放水）
-- proposal 产物已登记（forge 项目目录 specs/feat-llm-deep-extract/proposal.md，
-  哈希 758e1627；非仓库内路径）
-- checklist 2/2 全勾
+- decide ×3（向导零依赖/限量产品立场/sync 防呆只在 CLI 面）
+- finding ×1（架构 §6.1 命令表滞后，存量项，下次动该文件时顺手）
+- intent ×1（test-diff：全部新增测试）；checklist 2/2；proposal 已登记
+- mutation 首次消费：6/6 全杀灭（存活位点 stdinIsTTY 判据已补杀灭测试 b355439）
 
 ## 下一步
 
-1. 下一阶段路线图（README 如实标注）：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、
-   transcript 适配器扩展（Codex/DSH）、第二 agent parity 实测、端到端任务提升评测、飞书/Notion 桥、GUI
+1. 可选发版：main 已含深度提取 + 本次引导（README 如实标注未发版）；打 tag 触发 release workflow
+2. 路线图：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、Codex/DSH transcript 适配器、
+   第二 agent parity、端到端任务提升评测、飞书/Notion 桥、GUI
+3. 挂在用户名下：inject facet 工具绑定 OP 决议（rebuild 时代遗留 open finding）
