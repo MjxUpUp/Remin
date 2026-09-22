@@ -15,6 +15,11 @@
   升级提示：装过 tick 调度的存量用户升级后，首次 mine/tick 会自动补挖 Codex/DSH 近 7 天
   会话（`--since` 默认窗口内）；不挖更早历史需显式 `--full-history`，关闭某根把
   `REMIN_CODEX_DIR`/`REMIN_DSH_DIR` 指到空目录即可。
+- **任务提升评测（uplift）**：`eval run --suite uplift`（入 all）——同一任务集「空库基线
+  vs 带记忆」差值归因记忆贡献（recall/弃权不计分/superseded 零命中/注入面同验，全规则可判定）；
+  `remin eval uplift --tasks <file> [--record]` 真源实测模式（自备任务集 JSONL，只读检索面）；
+  `remin eval history` 趋势（各次 recall + 相对首跑/上跑 Δ）——纵向衰减曲线的数据面，
+  随真实使用逐次累积；wrong-abstain（期望命中却弃权）作为衰减信号一等公民如实计数。
 - **live parity 评测**（`remin eval run --suite parity-live`，opt-in 不入 all）：接入真实
   第二 agent 会话——`claude -p`（--mcp-config 临时文件）与 `codex exec`（-c 内联）各自经
   MCP 通道调 memory_search 并逐字回显命中 ID，与核心确定性检索真值逐集比对；双通道在场时

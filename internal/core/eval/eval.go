@@ -446,16 +446,17 @@ func SuiteBudget() *Report {
 func Run(suite string, binPath string) ([]*Report, error) {
 	suites := []string{suite}
 	if suite == "all" || suite == "" {
-		suites = []string{"trust", "roundtrip", "parity", "conflict", "budget"}
+		suites = []string{"trust", "roundtrip", "parity", "conflict", "budget", "uplift"}
 	}
 	var reps []*Report
 	for _, s := range suites {
 		switch s {
-		case "trust", "roundtrip", "parity", "conflict", "budget":
+		case "trust", "roundtrip", "parity", "conflict", "budget", "uplift":
 			runners := map[string]func() *Report{
 				"trust": SuiteTrust, "roundtrip": SuiteRoundtrip,
 				"parity":   func() *Report { return SuiteParity(binPath) },
 				"conflict": SuiteConflict, "budget": SuiteBudget,
+				"uplift": SuiteUplift,
 			}
 			reps = append(reps, runners[s]())
 		case "parity-live":

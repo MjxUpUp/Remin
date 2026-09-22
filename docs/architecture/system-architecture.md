@@ -151,7 +151,8 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | `remin view` | `--write <path>` `--facet` | AGENTS.md 形态投影（默认预览 stdout；显式 opt-in 才落盘） |
 | `remin export` / `restore` | `--out <dir>` / `--bundle <dir>` `--check` | 全量导出（sha256 清单）/ 整库还原（roundtrip 哈希一致；唯一绕过 inbox 的通道——还原的是已人审的库） |
 | `remin sync` | `--set-remote <url>` `--yes` `--push/--pull` | git push/pull 包装（远端仅托管；VERSION 冲突取 max） |
-| `remin eval run` | `--suite trust/roundtrip/parity/conflict/budget/parity-live/all --out` | 评测套件（规则可判定、模型无关），JSON 报告；parity-live 为 opt-in 真实 agent 会话通道（claude/codex 经 MCP 检索回显与核心真值比对） |
+| `remin eval run` | `--suite trust/roundtrip/parity/conflict/budget/uplift/parity-live/all --out` | 评测套件（规则可判定、模型无关），JSON 报告；uplift 为端到端任务提升（基线差值归因）；parity-live 为 opt-in 真实 agent 会话通道（claude/codex 经 MCP 检索回显与核心真值比对） |
+| `remin eval uplift` / `history` | `--tasks <file>` `--record` / `--limit` | 真源任务提升实测（不写记忆真源；逐次落 eval/history.jsonl，wrong-abstain/false-hit 信号随行）/ 纵向趋势渲染（衰减曲线数据面） |
 | `remin mcp` | | MCP stdio server（客户端拉起） |
 | `remin hook-stop` | | Stop hook 入口：stdin JSON / argv 双源收 transcript 路径 → 入队 → 尽力异步触发挖矿 |
 | `remin upgrade` | `--check` | 自更新（npm registry → sha512 校验 → 原子替换落位真身） |
@@ -233,8 +234,11 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | parity（宪法） | 同一 repo fixture：CLI inject 产物与 MCP memory_search 结果内容对等 |
 | conflict（宪法） | Ronaldo→Messi 事实变更集：旧事实注入率=0 |
 | budget（宪法） | SessionStart 注入含追赶 ≤ 800ms 硬预算（fixture 实测）；JIT 检索延迟测量待扩 |
+| uplift | 同一任务集空库基线 vs 带记忆：recall 差值归因；垃圾查询弃权不计分；superseded 零命中；注入面同验 |
+| parity-live（opt-in，不入 all） | 真实 claude/codex 一次性会话经 MCP 检索回显 ID 与核心真值逐集比对 |
 
 `remin eval run` 输出 JSON 报告；`make constitution` = 宪法五套件（trust 内含 provenance 覆盖率审计 / roundtrip / parity / conflict / budget）+ 依赖扫描 + 适配器预算；CI 接线后阻断合并。
+`remin eval uplift --tasks --record` 真源实测模式逐次落 `eval/history.jsonl`（wrong-abstain=期望命中却弃权的衰减信号、false-hit=期望弃权却命中的校准缺口信号），`remin eval history` 渲染趋势。
 
 ## 10. 安全与隐私
 

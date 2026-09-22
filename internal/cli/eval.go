@@ -73,7 +73,7 @@ var evalRunCmd = &cobra.Command{
 }
 
 func init() {
-	evalRunCmd.Flags().StringVar(&evalFlags.suite, "suite", "all", "套件: trust/roundtrip/parity/conflict/budget/all；parity-live（opt-in，真实 agent 会话）")
+	evalRunCmd.Flags().StringVar(&evalFlags.suite, "suite", "all", "套件: trust/roundtrip/parity/conflict/budget/uplift/all；parity-live（opt-in，真实 agent 会话）")
 	evalRunCmd.Flags().StringVar(&evalFlags.out, "out", "", "报告输出文件（JSON）")
 	evalCmd.AddCommand(evalRunCmd)
 	rootCmd.AddCommand(evalCmd)
