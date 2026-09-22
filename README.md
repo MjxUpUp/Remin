@@ -161,7 +161,7 @@ make adapter-budget                 # 适配器预算（P1-N2；当前零适配�
 
 已落地（v0.2.0 feat/rebuild-product 重建 + v0.3.x 增量）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.4.0，feat/llm-deep-extract）/ 闲时增量 tick（deep 待挖队列 + `remin tick` 排空 + OS 调度器接线 launchd/systemd，无常驻 daemon；feat/idle-tick）/ 多格式 transcript 适配器（Codex rollout + DSH session，多根发现 + origin 随源归因；feat/transcript-adapters）/ 跨 agent 通道实测 parity（`eval run --suite parity-live`：真实 claude/codex 一次性会话经 MCP 检索回显与核心真值逐集比对，通道构造零全局配置污染；feat/agent-parity）/ 端到端任务提升评测（uplift 套件入 all + `eval uplift --tasks --record` 真源实测 + `eval history` 趋势，wrong-abstain 衰减信号一等公民；feat/uplift-eval）/ 飞书·Notion 笔记桥（`remin bridge pull/push`：摄取走 human-verified 幂等通道、发布是单向只创建；零 SDK 密钥不落盘；feat/bridge）/ GUI 审收界面（`remin ui`：本地 Web 皮肤包裹核心包，选择器语义与 CLI 单一事实源，仅回环绑定 + Host/Origin/JSON-only 三层写防线；feat/gui-review）。
 
-未实现（随使用产生/待校准，非代码缺口）：
+未实现（随使用产生，非代码缺口）：
 
 - uplift 纵向曲线的**真实数据积累**（框架已落地：`eval uplift --record` 逐次累积；真实任务集与长期数据由使用产生）
 
