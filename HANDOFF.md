@@ -8,8 +8,8 @@
 ## 任务状态
 
 - **任务**：LLM 深度提取路径（端点可配，零 SDK）——路线图首项
-- **分支**：`feat/llm-deep-extract`（工作提交：0eaeefd 主体 → 27aa9de 审查返工 → b3c5cec 及
-  本条 HANDOFF 修正）；**待 finish 合入 main**
+- **分支**：`feat/llm-deep-extract`（工作提交：0eaeefd 主体 → 27aa9de 审查返工 → b3c5cec/2ed7baf
+  HANDOFF 修正）；**已合入 main（b6c6481，--no-ff）**
 - **门禁**：✅ task-implement → ✅ task-verify（验收 3/3 实跑，返工后对 HEAD 复跑仍 3/3）→
   ✅ 完成确认 gate → ✅ 独立对抗审查（8/10 PASS with P2，P2 已修）→ ✅ doc-review
   （round 1：95 分 @0eaeefd；round 2：92 分 @HEAD，P2/P3 已修）
@@ -55,6 +55,5 @@
 
 ## 下一步
 
-1. `forge task finish`——hazard 已清、门禁与双轮 doc-review 全绿，直接合并到 main
-2. 下一阶段路线图（README 如实标注）：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、
+1. 下一阶段路线图（README 如实标注）：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、
    transcript 适配器扩展（Codex/DSH）、第二 agent parity 实测、端到端任务提升评测、飞书/Notion 桥、GUI
