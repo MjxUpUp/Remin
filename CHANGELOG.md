@@ -15,6 +15,10 @@
   升级提示：装过 tick 调度的存量用户升级后，首次 mine/tick 会自动补挖 Codex/DSH 近 7 天
   会话（`--since` 默认窗口内）；不挖更早历史需显式 `--full-history`，关闭某根把
   `REMIN_CODEX_DIR`/`REMIN_DSH_DIR` 指到空目录即可。
+- **live parity 评测**（`remin eval run --suite parity-live`，opt-in 不入 all）：接入真实
+  第二 agent 会话——`claude -p`（--mcp-config 临时文件）与 `codex exec`（-c 内联）各自经
+  MCP 通道调 memory_search 并逐字回显命中 ID，与核心确定性检索真值逐集比对；双通道在场时
+  另验彼此一致。通道构造不碰用户全局配置。真实 agent 调用有成本，按需运行。
 - **闲时增量 tick**（`remin tick`）：OS 调度器按档拉起的一次性增量维护（无常驻 daemon）——
   增量快挖 + deep 待挖队列排空。快速路径挖过、配置了 LLM 端点的行段自动挂账待挖队列；
   `remin tick` 每 tick 限段深挖（默认 3 段），密钥不在场保留队列，端点失败弃权出队不重试；

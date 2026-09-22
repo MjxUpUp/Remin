@@ -458,8 +458,15 @@ func Run(suite string, binPath string) ([]*Report, error) {
 				"conflict": SuiteConflict, "budget": SuiteBudget,
 			}
 			reps = append(reps, runners[s]())
+		case "parity-live":
+			// opt-in 真实 agent 会话套件：真实 agent 调用有成本，不入 all
+			rep, err := SuiteParityLive(binPath)
+			if err != nil {
+				return nil, err
+			}
+			reps = append(reps, rep)
 		default:
-			return nil, fmt.Errorf("未知套件 %s（可选: trust/roundtrip/parity/conflict/budget/all）", s)
+			return nil, fmt.Errorf("未知套件 %s（可选: trust/roundtrip/parity/conflict/budget/parity-live/all）", s)
 		}
 	}
 	return reps, nil

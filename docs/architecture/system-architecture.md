@@ -151,7 +151,7 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | `remin view` | `--write <path>` `--facet` | AGENTS.md 形态投影（默认预览 stdout；显式 opt-in 才落盘） |
 | `remin export` / `restore` | `--out <dir>` / `--bundle <dir>` `--check` | 全量导出（sha256 清单）/ 整库还原（roundtrip 哈希一致；唯一绕过 inbox 的通道——还原的是已人审的库） |
 | `remin sync` | `--set-remote <url>` `--yes` `--push/--pull` | git push/pull 包装（远端仅托管；VERSION 冲突取 max） |
-| `remin eval run` | `--suite trust/roundtrip/parity/conflict/budget/all --out` | 评测套件（规则可判定、模型无关），JSON 报告 |
+| `remin eval run` | `--suite trust/roundtrip/parity/conflict/budget/parity-live/all --out` | 评测套件（规则可判定、模型无关），JSON 报告；parity-live 为 opt-in 真实 agent 会话通道（claude/codex 经 MCP 检索回显与核心真值比对） |
 | `remin mcp` | | MCP stdio server（客户端拉起） |
 | `remin hook-stop` | | Stop hook 入口：stdin JSON / argv 双源收 transcript 路径 → 入队 → 尽力异步触发挖矿 |
 | `remin upgrade` | `--check` | 自更新（npm registry → sha512 校验 → 原子替换落位真身） |
