@@ -38,22 +38,28 @@ func TestScheduleInstallRemoveStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var schedFile string
+	var schedFile, cmdFile string
 	if runtime.GOOS == "darwin" {
 		schedFile = filepath.Join(home, "Library", "LaunchAgents", "dev.reminmem.tick.plist")
+		cmdFile = schedFile // plist 单文件：命令与间隔同在
 	} else {
+		cmdFile = filepath.Join(home, ".config", "systemd", "user", "remin-tick.service")
 		schedFile = filepath.Join(home, ".config", "systemd", "user", "remin-tick.timer")
 	}
-	data, err := os.ReadFile(schedFile)
+	data, err := os.ReadFile(cmdFile)
 	if err != nil {
-		t.Fatalf("调度文件应落位: %v", err)
+		t.Fatalf("命令文件应落位: %v", err)
 	}
 	body := string(data)
 	if !strings.Contains(body, "tick") || !strings.Contains(body, bin) {
-		t.Fatalf("调度文件应含 tick 命令与二进制路径: %s", body)
+		t.Fatalf("命令文件应含 tick 命令与二进制路径: %s", body)
 	}
-	if !strings.Contains(body, "14400") { // 4h = 14400s
-		t.Errorf("调度文件应含间隔 14400s: %s", body)
+	timerData, err := os.ReadFile(schedFile)
+	if err != nil {
+		t.Fatalf("调度文件应落位: %v", err)
+	}
+	if !strings.Contains(string(timerData), "14400") { // 4h = 14400s（间隔在 timer/plist）
+		t.Errorf("调度文件应含间隔 14400s: %s", timerData)
 	}
 	// 台账登记
 	ledger, err := LoadLedger(st.Root)
@@ -69,12 +75,19 @@ func TestScheduleInstallRemoveStatus(t *testing.T) {
 	if !found {
 		t.Fatalf("sched-file effect 应入台账: %+v", ledger.Effects)
 	}
-	// best-effort 加载被调起，且重装语义正确：bootout（卸旧）先于 bootstrap（装新）
+	// best-effort 加载被调起；重装语义正确（darwin：bootout 卸旧先于 bootstrap 装新；
+	// linux：daemon-reload 先于 enable）
 	if len(*calls) < 2 {
-		t.Fatalf("应先 bootout 旧任务再 bootstrap（至少 2 次调用）: %v", *calls)
+		t.Fatalf("加载调用应至少 2 次: %v", *calls)
 	}
-	if !strings.Contains((*calls)[0], "bootout") || !strings.Contains((*calls)[1], "bootstrap") {
-		t.Fatalf("调用序应为 bootout → bootstrap: %v", *calls)
+	if runtime.GOOS == "darwin" {
+		if !strings.Contains((*calls)[0], "bootout") || !strings.Contains((*calls)[1], "bootstrap") {
+			t.Fatalf("调用序应为 bootout → bootstrap: %v", *calls)
+		}
+	} else {
+		if !strings.Contains((*calls)[0], "daemon-reload") || !strings.Contains((*calls)[1], "enable") {
+			t.Fatalf("调用序应为 daemon-reload → enable: %v", *calls)
+		}
 	}
 
 	// status 如实

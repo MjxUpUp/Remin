@@ -114,7 +114,7 @@ func scheduleInstallLaunchd(home, root, binPath string, secs int) ([]string, err
 	if loadErr != nil {
 		desc = append(desc, "提示：launchctl bootstrap 未成功（"+loadErr.Error()+"），文件已落位，可手工执行：launchctl bootout gui/"+uid+"/"+schedLabel+" && launchctl bootstrap gui/"+uid+" "+file)
 	}
-	return desc, registerSchedEffects(root, binPath, file)
+	return desc, registerSchedEffect(root, binPath, file)
 }
 
 func scheduleInstallSystemd(home, root, binPath string, secs int) ([]string, error) {
@@ -151,17 +151,20 @@ WantedBy=timers.target
 		desc = append(desc, "提示：systemctl enable 未成功（"+enableErr.Error()+"），文件已落位，可手工执行：systemctl --user enable --now "+schedUnitName+".timer")
 	}
 	// service 与 timer 都是我们创建的文件：两个 effect 都入台账（uninstall 按
-	// 台账回放摘文件——只挂 timer 会漏 service 残留）
-	for _, f := range files {
-		if err := registerSchedEffects(root, binPath, f); err != nil {
-			return desc, err
-		}
+	// 台账回放摘文件——只挂 timer 会漏 service 残留）。守卫标记各取文件内真实
+	// 存在的内容：service 用二进制路径；timer 用 Unit= 行（timer 不含命令——
+	// 用 bin 路径做守卫会把我们自己的 timer 误判为「用户改过」而拒绝摘除）
+	if err := registerSchedEffect(root, binPath, files[0]); err != nil {
+		return desc, err
+	}
+	if err := registerSchedEffect(root, schedUnitName+".service", files[1]); err != nil {
+		return desc, err
 	}
 	return desc, nil
 }
 
-// registerSchedEffects 台账登记（幂等：同文件同命令替换）
-func registerSchedEffects(root, binPath, schedFile string) error {
+// registerSchedEffect 台账登记（幂等：同文件同标记替换；guard 为该文件内必含的标记串）
+func registerSchedEffect(root, guard, schedFile string) error {
 	ledger, err := LoadLedger(root)
 	if err != nil {
 		return err
@@ -171,7 +174,7 @@ func registerSchedEffects(root, binPath, schedFile string) error {
 		Kind:    "sched-file",
 		File:    schedFile,
 		Key:     schedLabel,
-		Command: binPath,
+		Command: guard,
 		Created: true,
 	})
 	return ledger.Save(root)
