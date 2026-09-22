@@ -38,7 +38,7 @@
 
 ## 下一步
 
-1. 可选发版：main 已含深度提取 + 本次引导（README 如实标注未发版）；打 tag 触发 release workflow
+1. 发版 v0.4.0（CHANGELOG 已建，README 版本归因已对齐）
 2. 路线图：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、Codex/DSH transcript 适配器、
    第二 agent parity、端到端任务提升评测、飞书/Notion 桥、GUI
 3. 挂在用户名下：inject facet 工具绑定 OP 决议（rebuild 时代遗留 open finding）

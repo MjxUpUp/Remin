@@ -151,7 +151,7 @@ make adapter-budget                 # 适配器预算（P1-N2；当前零适配�
 
 ## 路线图（如实标注未实现项）
 
-已落地（v0.2.0 feat/rebuild-product 重建 + v0.3.x 增量）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.3.x，feat/llm-deep-extract）。
+已落地（v0.2.0 feat/rebuild-product 重建 + v0.3.x 增量）：核心数据层与原子审收（含高频提交 git 竞态回归防护）/ 确定性 BM25 倒排检索与快照语义 / MCP 五工具与快照钉住（stdio JSON-RPC 端到端实测）/ transcript 挖矿（启发式快速路径 + 增量游标 + recap 候选 + 快速档）/ doctor 接线（claude-code/codex/cursor/gemini-cli，写前备份键级合并幂等）与注入索引 / 五来源导入（幂等指纹 + 相似聚簇 + 冲突建议）/ 视图投影与多设备同步（VERSION 冲突自动取 max）/ 可信评测入口（trust/roundtrip/parity/conflict/budget 套件，规则可判定模型无关）/ 宪法检查全量进 CI（依赖扫描 + 适配器预算）/ LLM 深度提取路径（remin mine --deep：端点可配零 SDK，quote 逐字溯源守卫拒收幻觉候选，弃权语义；v0.4.0，feat/llm-deep-extract）。
 
 未实现（下一阶段）：
 
