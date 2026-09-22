@@ -36,9 +36,15 @@
 - intent ×1（test-diff：全部新增测试）；checklist 2/2；proposal 已登记
 - mutation 首次消费：6/6 全杀灭（存活位点 stdinIsTTY 判据已补杀灭测试 b355439）
 
-## 下一步
+## v0.4.0 已发版（2026-09-22）
 
-1. 发版 v0.4.0（CHANGELOG 已建，README 版本归因已对齐）
+- 流程：merge-release-choreography 8 站走完——双只读审计（M1/M2/M5 ✅ + M3/M4/M7/R1 ✅，
+  M6 判人工核对级 → **GO-WITH-RISK**）→ tag v0.4.0 → release workflow 2m7s 成功 →
+  npm 六包官方源核实（CDN 滞后需查版本化端点）→ Release notes 补回滚配方与已知事项 →
+  分支清理 → 真实安装验证（v0.4.0 + 新 flag 面 + 执行位）→ 用户 ~/.remin/bin 已 upgrade
+- GitHub Release：https://github.com/MjxUpUp/Remin/releases/tag/v0.4.0（11 资产）
+
+## 下一步
 2. 路线图：闲时增量 tick（挂深路径自动触发 + deep 待挖队列）、Codex/DSH transcript 适配器、
    第二 agent parity、端到端任务提升评测、飞书/Notion 桥、GUI
 3. 挂在用户名下：inject facet 工具绑定 OP 决议（rebuild 时代遗留 open finding）
