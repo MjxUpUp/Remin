@@ -15,6 +15,11 @@
   升级提示：装过 tick 调度的存量用户升级后，首次 mine/tick 会自动补挖 Codex/DSH 近 7 天
   会话（`--since` 默认窗口内）；不挖更早历史需显式 `--full-history`，关闭某根把
   `REMIN_CODEX_DIR`/`REMIN_DSH_DIR` 指到空目录即可。
+- **审收 Web 界面**（`remin ui`）：本地审收 GUI（仅绑 127.0.0.1，--port/--no-open 可调）——
+  批次列表（构成统计）/候选详情/采纳/拒绝（全批·按类型·单条，与 CLI 同选择器语义——
+  选择器实现提升为 inbox 包单一事实源）/检索（trust 随行，弃权如实展示）/单条全貌。
+  零前端依赖内嵌单页（go:embed）；写操作三层防线：回环 Host 校验（防 DNS rebinding）+ Origin 校验 + application/json-only（跨站表单无法伪造）；
+  GUI 只是皮肤，不引入新核心能力（架构预留兑现）。
 - **飞书 / Notion 笔记桥**（`remin bridge`）：`pull --from notion|feishu` 把平台笔记
   （Notion 父页子页 / 飞书 wiki 文档）经 markdown 暂存送入 importer **human-verified** 通道
   （幂等指纹，默认 dry-run）；`push --to notion|feishu` 把记忆视图单向发布为新页面

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remin 审收</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f6f7f9; color: #1f2328; }
+  header { background: #fff; border-bottom: 1px solid #e4e7eb; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; }
+  header .meta { color: #6b7280; font-size: 12px; }
+  header input[type=search] { flex: 1; min-width: 220px; padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px; }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px 20px; max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background: #fff; border: 1px solid #e4e7eb; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 10px; color: #57606a; }
+  .batch { padding: 10px; border: 1px solid #e4e7eb; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
+  .batch:hover, .batch.sel { border-color: #0969da; background: #f0f6ff; }
+  .batch .id { font-family: ui-monospace, monospace; font-size: 12px; }
+  .batch .types { color: #6b7280; font-size: 12px; margin-top: 4px; }
+    .cand { border: 1px solid #e4e7eb; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+  .cand .head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #57606a; flex-wrap: wrap; }
+  .cand .body { margin: 6px 0; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .cand .prov { font-size: 12px; color: #6b7280; }
+  .tag { background: #eaeef2; border-radius: 4px; padding: 1px 6px; }
+  .trust-unverified { color: #9a6700; background: #fff8c5; }
+  .trust-human-verified { color: #1a7f37; background: #dafbe1; }
+  .trust-agent-claimed { color: #0550ae; background: #ddf4ff; }
+  button { font-size: 13px; padding: 5px 12px; border-radius: 6px; border: 1px solid #d0d7de; background: #f6f8fa; cursor: pointer; }
+  button.primary { background: #1f883d; border-color: #1f883d; color: #fff; }
+  button.danger { background: #fff; color: #cf222e; border-color: #d0d7de; }
+  button:disabled { opacity: .5; cursor: default; }
+  .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .hint { color: #6b7280; font-size: 12px; margin-top: 4px; }
+  .hit { border-left: 3px solid #0969da; padding: 6px 10px; margin-bottom: 6px; background: #fff; }
+  .abstain { color: #9a6700; padding: 8px; background: #fff8c5; border-radius: 6px; }
+  #toast { position: fixed; bottom: 16px; right: 16px; background: #1f2328; color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Remin 审收</h1>
+  <span class="meta" id="meta">…</span>
+  <input type="search" id="q" placeholder="检索记忆（trust 随行；低置信弃权）">
+</header>
+<main>
+  <section id="batches"></section>
+  <section id="detail">
+    <div class="card"><h2>批次详情</h2><p class="hint">左侧选择待审批次；采纳=单一原子提交（记忆+supersession+版本+1+审计）。</p></div>
+    <div class="card"><h2>检索</h2><p class="hint">输入查询后回车。</p></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+let currentBatch = null;
+function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background=ok?'#1f883d':'#cf222e'; t.style.display='block'; setTimeout(()=>t.style.display='none', 2600); }
+async function api(path, opts){ const r = await fetch(path, opts); const j = await r.json(); if(!j.ok) throw new Error(j.error||r.status); return j.data; }
+function fmtTypes(t){ return Object.entries(t||{}).map(([k,v])=>`${k} ${v}`).join(' · ') || '—'; }
+async function loadState(){
+  const d = await api('/api/state');
+  $('#meta').textContent = `v${d.version} · ${d.root}`;
+  const box = $('#batches'); box.innerHTML = '<div class="card"><h2>待审批次</h2><div id="blist"></div></div>';
+  const pending = (d.batches||[]).filter(b=>b.status!=='done' && b.pending>0);
+  const done = (d.batches||[]).filter(b=>!(b.status!=='done' && b.pending>0));
+  const list = $('#blist');
+  if(!pending.length) list.innerHTML = '<p class="hint">暂无待审——remin mine / bridge pull 产生候选后出现在此。</p>';
+  for(const b of pending){
+    const el = document.createElement('div');
+    el.className='batch'+(b.id===currentBatch?' sel':'');
+    el.innerHTML = `<div class="id">${esc(b.id)}</div><div class="types">${esc(b.source)} · ${fmtTypes(b.types)} · ${b.pending} 条</div>`;
+    el.onclick=()=>{ currentBatch=b.id; loadState(); loadBatch(b.id); };
+    list.appendChild(el);
+  }
+  if(done.length){
+    const h=document.createElement('p'); h.className='hint'; h.textContent='已办批次 '+done.length+'（remin log 可查）';
+    list.appendChild(h);
+  }
+}
+async function loadBatch(id){
+  const d = await api('/api/batch?id='+encodeURIComponent(id));
+  const box = $('#detail');
+  box.innerHTML = `<div class="card"><h2>${esc(id)}</h2><div id="cands"></div>
+    <div class="actions">
+      <button class="primary" onclick="act('promote')">采纳全部</button>
+      <button class="danger" onclick="act('reject')">拒绝全部</button>
+      <button onclick="act('promote','episodic')">仅采纳 recap(episodic)</button>
+      <button class="danger" onclick="act('reject','episodic')">仅拒 recap(episodic)</button>
+    </div><p class="hint">动作与 CLI 同语义（batch/all/type）；每候选可单独采纳/拒绝。</p></div>
+    <div class="card"><h2>检索</h2><div id="hits"></div></div>`;
+  const wrap = $('#cands');
+  if(!d.candidates.length) wrap.innerHTML='<p class="hint">该批次无待选。</p>';
+  for(const c of d.candidates){
+    const el = document.createElement('div'); el.className='cand';
+    el.innerHTML = `<div class="head"><span class="tag">${esc(c.type)}</span><span class="tag trust-${esc(c.trust)}">${esc(c.trust)}</span><span>${esc(c.provenance?.origin||'')}</span>${c.expires?`<span>ephemeral ${esc(c.expires)}</span>`:''}</div>
+      <div class="body">${esc(c.body)}</div>
+      <div class="prov">来源 ${esc(c.provenance?.ref||'')} · 采集 ${esc(c.captured_at||'')}</div>
+      <div class="actions"><button class="primary" data-id="${esc(c.id)}" onclick="actOne('promote',this.dataset.id)">采纳</button><button class="danger" data-id="${esc(c.id)}" onclick="actOne('reject',this.dataset.id)">拒绝</button></div>`;
+    wrap.appendChild(el);
+  }
+}
+async function act(kind, type){
+  const sel = {batch: currentBatch, all: true, type: type||''}; // type 分诊与 CLI 同语义：作用域=批次内该类型
+  await post(kind, sel);
+}
+async function actOne(kind, id){ await post(kind, {ids:[id]}); }
+async function post(kind, sel){
+  try{
+    const r = await fetch('/api/'+kind, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(sel)});
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error);
+    toast(kind==='promote'?'已采纳（原子提交）':'已拒绝（归档可审计）');
+    await loadState(); if(currentBatch) await loadBatch(currentBatch);
+  }catch(e){ toast('失败：'+e.message, false); }
+}
+$('#q').addEventListener('keydown', async ev=>{
+  if(ev.key!=='Enter') return;
+  const q = ev.target.value.trim(); if(!q) return;
+  try{
+    const d = await api('/api/search?q='+encodeURIComponent(q));
+    const box = $('#hits') || (()=>{ $('#detail').insertAdjacentHTML('beforeend','<div class="card"><h2>检索</h2><div id="hits"></div></div>'); return $('#hits'); })();
+    box.innerHTML = d.abstained ? `<div class="abstain">弃权：${esc(d.abstain_reason||'置信不足')}（宁可不知道）</div>`
+      : (d.results||[]).map(h=>`<div class="hit"><b>${esc(h.id)}</b> <span class="tag trust-${esc(h.trust)}">${esc(h.trust)}</span> <span class="tag">${esc(h.type)}</span><div>${esc(h.content)}</div></div>`).join('') || '<p class="hint">无命中。</p>';
+  }catch(e){ toast('检索失败：'+e.message, false); }
+});
+function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+loadState();
+</script>
+</body>
+</html>
