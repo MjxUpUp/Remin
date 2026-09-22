@@ -279,6 +279,15 @@ func withStdinDevNull(t *testing.T) {
 	})
 }
 
+// stdinIsTTY 判据钉死（mutation 存活位点 onboarding.go:40）：char-device stdin
+// 必须判真——判据翻转会让真终端用户拿不到向导；EOF 兜底是 initWizard 层的职责
+func TestStdinIsTTYCharDevice(t *testing.T) {
+	withStdinDevNull(t) // /dev/null 是 char device，Stat 无错
+	if !stdinIsTTY() {
+		t.Error("char-device stdin（/dev/null）应判为 TTY（真终端判据；EOF 兜底在 initWizard 层）")
+	}
+}
+
 // char-device stdin + EOF（</dev/null 防挂起的 CI 形态）→ 走直通路径，
 // stdout 零向导泄漏，git 身份缺失时错误与旧版一致（评审 P2-1 契约）
 func TestInitCharDeviceEOFAllPlain(t *testing.T) {
