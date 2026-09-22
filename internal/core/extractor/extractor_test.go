@@ -61,3 +61,48 @@ func TestExtractAssistantDecision(t *testing.T) {
 		t.Errorf("ref 应指向行号: %s", cands[0].Provenance.Ref)
 	}
 }
+
+// TestOriginAttributionAndFallback origin 归因：随源标注；空回退 claude-code（存量行为不变）
+func TestOriginAttributionAndFallback(t *testing.T) {
+	withOrigin := ev("user", "记住：构建走 pnpm", 1)
+	withOrigin.Origin = "codex"
+	cands := Extract([]Event{withOrigin})
+	if len(cands) == 0 {
+		t.Fatal("应产候选")
+	}
+	var typed, recap bool
+	for _, c := range cands {
+		if c.Expires == "" {
+			typed = true
+			if c.Provenance.Origin != "codex" {
+				t.Errorf("typed 候选 origin 应随源 codex: %+v", c.Provenance)
+			}
+		} else {
+			recap = true
+			if c.Provenance.Origin != "codex" {
+				t.Errorf("recap origin 应随批内来源: %+v", c.Provenance)
+			}
+		}
+	}
+	if !typed || !recap {
+		t.Fatalf("应同时产 typed 与 recap: %+v", cands)
+	}
+
+	// 空 Origin 回退 claude-code
+	fallback := Extract([]Event{ev("user", "记住：构建走 npm", 5)})
+	for _, c := range fallback {
+		if c.Provenance.Origin != "claude-code" {
+			t.Errorf("空 origin 应回退 claude-code: %+v", c.Provenance)
+		}
+	}
+}
+
+// TestDeepOriginOfFollowsEventOrigin 深路径 origin 派生（随源 ·deep；空回退 claude-code·deep）
+func TestDeepOriginOfFollowsEventOrigin(t *testing.T) {
+	if got := deepOriginOf(Event{Origin: "dsh"}); got != "dsh·deep" {
+		t.Errorf("随源派生: %s", got)
+	}
+	if got := deepOriginOf(Event{}); got != "claude-code·deep" {
+		t.Errorf("空回退: %s", got)
+	}
+}

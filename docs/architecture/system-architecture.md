@@ -1,4 +1,4 @@
-# Remin 系统架构设计（v1.1）
+# Remin 系统架构设计（v1.2）
 
 > 本文是《Remin（随忆）技术设计方案 v1.0》（飞书）在仓库内的落地版：技术选型定案（见 [ADR 索引](../adr/README.md)）、组件与包结构、接口契约、前端交互设计与 M0-M6 实施切片。
 > 上位文档：[PRINCIPLES.md](../../PRINCIPLES.md)（宪法，冲突时以宪法为准）· [记忆格式 spec v0](../spec/memory-format-v0.md)。
@@ -93,8 +93,11 @@ scripts/              宪法 CI 检查（依赖扫描、适配器预算）
 
 ```text
 Stop hook / 日志落盘 → queue.jsonl（按 transcript 路径幂等去重）
-  → Miner 解析（claude-jsonl 适配器，增量游标 cursors.json）
-  → Extractor 快速路径（启发式，零 LLM，硬预算内）→ inbox 批次（trust=unverified）
+  → Miner 解析（三格式：claude-jsonl / codex rollout / dsh session·zstd——路径分派，
+     增量游标 cursors.json；多根发现 ~/.claude/projects + ~/.codex/sessions + ~/.dsh/sessions
+     + REMIN_TRANSCRIPT_ROOTS，跨根去重）
+  → Extractor 快速路径（启发式，零 LLM，硬预算内）→ inbox 批次（trust=unverified；
+     provenance.origin 随源 claude-code/codex/dsh）
   → [opt-in] Extractor 深度路径（手动 remin mine --deep 或闲时 tick 排空 deep 待挖队列：
      OpenAI 兼容端点可配，quote 逐字溯源守卫——编造候选拒收，失败即弃权不拖垮快速路径）
      → inbox 批次（mine --deep 并入同批；tick 深挖独立成批并跨批次 body 去重）
@@ -132,7 +135,7 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | `remin init` | `--root` | 创建真源 git 仓库（目录骨架、.gitignore、config.yaml、VERSION=0、首提交） |
 | `remin doctor` | `--install` `--takeover` | 检测已装 agent / 一键接线（写前备份）/ 健康检查 / 接管同名 memory server |
 | `remin propose` | `--type --facet --context --origin --ref --quote [--ephemeral] [--verify-condition]` | 显式记忆提案 → inbox（human 面通道） |
-| `remin mine` | `--dry-run` `--force` `--from-queue` `--deep` `--since\|--full-history` | transcript 挖矿（claude-jsonl；增量断点续挖；--force 全量重挖；--deep 追加 LLM 深度路径；快挖自动挂账 deep 待挖队列） |
+| `remin mine` | `--dry-run` `--force` `--from-queue` `--deep` `--since\|--full-history` | transcript 挖矿（三格式路径分派；增量断点续挖；--force 全量重挖；--deep 追加 LLM 深度路径；配置 llm 端点时快挖自动挂账 deep 待挖队列） |
 | `remin tick` | `--deep-max` `--since\|--full-history` | 闲时增量维护：增量快挖 + deep 待挖排空（OS 调度器按档拉起，无常驻 daemon；弃权段出队不重试） |
 | `remin tick schedule` | `install --every` / `remove` / `status` | OS 调度器接线（macOS launchd / Linux systemd user timer；effect 挂接线台账，uninstall 回放摘除） |
 | `remin import` | `--from --path --apply` | 五来源迁移；默认 dry-run 分析报告；--apply 生成 inbox 批次；幂等只报增量 |

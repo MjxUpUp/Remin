@@ -19,6 +19,7 @@ func transcriptWhitelist() []string {
 	roots := []string{
 		filepath.Join(store.HomeDir(), ".claude", "projects"),
 		filepath.Join(store.HomeDir(), ".codex", "sessions"),
+		filepath.Join(store.HomeDir(), ".dsh", "sessions"),
 	}
 	if env := os.Getenv("REMIN_TRANSCRIPT_ROOTS"); env != "" {
 		roots = append(roots, strings.Split(env, string(os.PathListSeparator))...)

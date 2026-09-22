@@ -6,6 +6,15 @@
 
 ### 新增
 
+- **多格式 transcript 适配器**：`remin mine` / `remin tick` 现挖三格式的会话日志——
+  Claude Code JSONL（原有）+ **Codex rollout**（`~/.codex/sessions`，response_item/message 形态）
+  + **DSH session**（`~/.dsh/sessions`，zstd 压缩 JSONL；plugin 注入噪声过滤，epoch 毫秒时间戳
+  归一）。多根发现（`REMIN_TRANSCRIPT_ROOTS` 同源扩展，各根 env 可覆盖）、跨根去重、
+  增量游标与 deep 待挖队列对三格式一致。候选 `provenance.origin` 随源标注
+  （claude-code/codex/dsh，深路径 codex·deep 等），命令回显/系统提醒噪声沿用过滤。
+  升级提示：装过 tick 调度的存量用户升级后，首次 mine/tick 会自动补挖 Codex/DSH 近 7 天
+  会话（`--since` 默认窗口内）；不挖更早历史需显式 `--full-history`，关闭某根把
+  `REMIN_CODEX_DIR`/`REMIN_DSH_DIR` 指到空目录即可。
 - **闲时增量 tick**（`remin tick`）：OS 调度器按档拉起的一次性增量维护（无常驻 daemon）——
   增量快挖 + deep 待挖队列排空。快速路径挖过、配置了 LLM 端点的行段自动挂账待挖队列；
   `remin tick` 每 tick 限段深挖（默认 3 段），密钥不在场保留队列，端点失败弃权出队不重试；

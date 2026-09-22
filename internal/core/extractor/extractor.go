@@ -21,6 +21,15 @@ type Event struct {
 	CWD         string
 	Timestamp   string
 	ProjectName string
+	Origin      string // 来源 agent（claude-code/codex/dsh；空回退 claude-code——存量行为）
+}
+
+// originOf 事件来源归因（空回退 claude-code：历史 fixture 与既有批次行为不变）
+func originOf(origin string) string {
+	if origin != "" {
+		return origin
+	}
+	return "claude-code"
 }
 
 // 用户显式指令（「现在就记」类）：最强信号
@@ -125,7 +134,7 @@ func makeCandidate(mtype, body string, ev Event, trust string) *inbox.Candidate 
 	c.Trust = trust
 	c.Source = store.SourceAgent
 	c.Provenance = store.Provenance{
-		Origin: "claude-code",
+		Origin: originOf(ev.Origin),
 		Ref:    refOf(ev),
 		Quote:  truncate(ev.Text, 400),
 	}
@@ -159,7 +168,7 @@ func makeRecap(sid, firstTs, lastTs string, events []Event, lastAssistant Event)
 		quote = "（transcript 无文本事件，仅行范围）"
 	}
 	c.Provenance = store.Provenance{
-		Origin: "claude-code",
+		Origin: originOf(firstOrigin(events)),
 		Ref:    recapRef(sid, events),
 		Quote:  quote,
 	}
@@ -188,6 +197,16 @@ func firstProject(events []Event) string {
 	for _, ev := range events {
 		if ev.ProjectName != "" {
 			return ev.ProjectName
+		}
+	}
+	return ""
+}
+
+// firstOrigin 批内首个非空来源（recap 归因用；事件同源）
+func firstOrigin(events []Event) string {
+	for _, ev := range events {
+		if ev.Origin != "" {
+			return ev.Origin
 		}
 	}
 	return ""

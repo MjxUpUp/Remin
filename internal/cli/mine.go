@@ -21,7 +21,7 @@ var mineFlags struct {
 // mine transcript 挖矿（增量断点续挖；--force 全量重挖兼审计）
 var mineCmd = &cobra.Command{
 	Use:   "mine",
-	Short: "从 Claude Code 会话日志挖矿：提取记忆候选 → inbox（增量断点续挖）",
+	Short: "多格式 transcript 挖矿（Claude Code/Codex/DSH）：提取记忆候选 → inbox（增量断点续挖）",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st, err := mustStore()
 		if err != nil {
@@ -36,7 +36,7 @@ var mineCmd = &cobra.Command{
 			since = 0 // 显式全量（重挖审计场景）
 		}
 		rep, err := miner.Mine(context.Background(), st, cfg, miner.Options{
-			DryRun: mineFlags.dryRun, Force: mineFlags.force, FromQueue: mineFlags.fromQueue,
+			ExtraRoots: miner.DefaultExtraRoots(), DryRun: mineFlags.dryRun, Force: mineFlags.force, FromQueue: mineFlags.fromQueue,
 			Deep: mineFlags.deep, SinceDays: since,
 		})
 		if err != nil {
