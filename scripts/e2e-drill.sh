@@ -140,6 +140,58 @@ HOME="$FAKE_HOME" "$BIN" doctor | tail -6
 echo "--- 真源记忆仍在（卸载不动用户资产）---"
 "$BIN" search "迁移脚本" | head -3
 
+step "16. tick 闲时深挖 + OS 调度接线（fake LLM + launchctl shim）"
+# 16a. deep 待挖队列：快挖入队（端点已配即可，无需密钥）
+cat >> "$REMIN_HOME/config.yaml" <<'EOF'
+llm:
+  endpoint: http://127.0.0.1:18471/v1/chat/completions
+  model: drill-fake
+  timeout_ms: 3000
+EOF
+mkdir -p "$SB/claude/projects/Users-demo-proj2"
+cat > "$SB/claude/projects/Users-demo-proj2/ccccdddd-1111-2222-3333-444455556666.jsonl" <<'EOF'
+{"type":"user","sessionId":"ccccdddd-1111-2222-3333-444455556666","cwd":"/Users/demo/proj2","timestamp":"2026-09-22T10:00:00+08:00","message":{"role":"user","content":"这个项目验证要走 make constitution 才完整，单跑 go test 会漏依赖扫描"}}
+EOF
+"$BIN" mine >/dev/null || exit 1
+python3 - "$REMIN_HOME/transcripts-cache/deep-queue.jsonl" <<'PYEOF' || exit 1
+import json, sys
+q = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+assert len(q) == 1 and q[0]["from_line"] == 1, q
+print("deep 队列挂账 OK: %s" % q[0])
+PYEOF
+# 16b. tick 排空（fake LLM server）
+python3 - <<'PYEOF' &
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+RESP = json.dumps({"choices":[{"message":{"content":'[{"type":"preference","body":"验证统一走 make constitution，不单跑 go test","quote":"这个项目验证要走 make constitution 才完整，单跑 go test 会漏依赖扫描"}]'}}]}).encode()
+class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(RESP)))
+        self.end_headers()
+        self.wfile.write(RESP)
+    def log_message(self, *a): pass
+HTTPServer(('127.0.0.1', 18471), H).serve_forever()
+PYEOF
+LLM_PID=$!
+sleep 0.5
+export REMIN_LLM_API_KEY=drill-dummy
+"$BIN" tick --json | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; assert d["deep_drained"]==1 and d["deep_candidates"]==1 and d["deep_pending"]==0, d; print("tick 深挖排空 OK: drained=%d candidates=%d"%(d["deep_drained"],d["deep_candidates"]))' || { kill $LLM_PID; exit 1; }
+"$BIN" inbox --json | python3 -c 'import json,sys; bs=json.load(sys.stdin)["data"]["batches"]; mb=[b for b in bs if b["source"].startswith("mine") and b["status"]!="done"]; assert mb and mb[0]["pending"]>=1, bs; print("tick 深挖批次 OK: %s 候选 %d 条"%(mb[0]["id"],mb[0]["pending"]))' || { kill $LLM_PID; exit 1; }
+kill $LLM_PID 2>/dev/null
+# 16c. 调度接线：launchctl shim 拦截（不碰真实 launchd）
+mkdir -p "$SB/shim"
+printf '#!/bin/sh\necho "launchctl $*" >> "%s/launchctl.log"\nexit 0\n' "$SB/shim" > "$SB/shim/launchctl"
+chmod +x "$SB/shim/launchctl"
+HOME="$FAKE_HOME" PATH="$SB/shim:$PATH" "$BIN" tick schedule install --every 30m --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"], d; print("schedule install OK")' || exit 1
+test -f "$FAKE_HOME/Library/LaunchAgents/dev.reminmem.tick.plist" && echo "plist 落位 OK"
+grep -q bootstrap "$SB/shim/launchctl.log" && echo "launchctl bootstrap 经 shim 调起 OK"
+HOME="$FAKE_HOME" PATH="$SB/shim:$PATH" "$BIN" tick schedule status --json | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; assert d["installed"] and d["interval"]=="1800s", d; print("schedule status OK: %s/%s"%(d["file"],d["interval"]))' || exit 1
+HOME="$FAKE_HOME" PATH="$SB/shim:$PATH" "$BIN" tick schedule remove || exit 1
+test ! -f "$FAKE_HOME/Library/LaunchAgents/dev.reminmem.tick.plist" && echo "schedule remove OK"
+
 echo
 echo "═══ 演练完成 ═══"
 echo "沙盒: ${SB}（未清理，供检查）"

@@ -203,6 +203,19 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 			allCands = append(allCands, cands...)
 		}
 		cursors.Set(path, Cursor{Size: info.Size(), Lines: lines})
+		// deep 待挖队列挂账：快速路径挖过的新行段留给闲时 tick 深挖（端点已配才入队，
+		// 密钥后置到排空时校验）；--deep 已深挖的范围出队（按实际深挖区间 [fromLine,lines]——
+		// 增量深挖不断点前的待挖段，防未深挖段被静默丢弃）
+		if !opts.DryRun {
+			dq := LoadDeepQueue(st.Root)
+			if len(events) > 0 && !opts.Deep && cfg != nil && cfg.LLM != nil && cfg.LLM.Endpoint != "" {
+				_ = dq.RemoveCovered(path, fromLine, lines) // 旧段被新段完全覆盖时去重（force 重挖防双重计费）
+				_ = dq.Append(path, fromLine, lines)
+			}
+			if opts.Deep {
+				_ = dq.RemoveCovered(path, fromLine, lines)
+			}
+		}
 		mined[path] = true
 		rep.Transcripts++
 	}

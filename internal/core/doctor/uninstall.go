@@ -233,6 +233,23 @@ func revertEffect(e Effect) (ok bool, reason string) {
 			return false, err.Error()
 		}
 		return true, ""
+	case "sched-file":
+		// 调度器侧卸载 best-effort（文件删除是主清理面）；不再含我们写的命令 = 用户改过，不盲删
+		_ = schedTeardown(e.File)
+		data, err := os.ReadFile(e.File)
+		if os.IsNotExist(err) {
+			return false, ""
+		}
+		if err != nil {
+			return false, fmt.Sprintf("读取失败: %v", err)
+		}
+		if e.Command != "" && !strings.Contains(string(data), e.Command) {
+			return false, "已被用户修改（不再含我们写入的命令），请手工处理"
+		}
+		if err := os.Remove(e.File); err != nil {
+			return false, err.Error()
+		}
+		return true, ""
 	}
 	return false, "未知 effect 类型: " + e.Kind
 }
