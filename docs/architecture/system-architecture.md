@@ -99,7 +99,9 @@ Stop hook / 日志落盘 → queue.jsonl（按 transcript 路径幂等去重）
      quote 逐字溯源守卫——编造候选拒收，失败即弃权不拖垮快速路径）→ 同一 inbox 批次
   → 人审 promote（原子提交）
 触发点：会话结束（Stop 入队，agent 零延迟）/ 开场追赶（inject 内，硬预算 800ms，超时降级）
-        / 手动 remin mine（全量重挖，兼审计；--deep 追加深度路径——hook 路径永不触网）
+        / 手动 remin mine（默认 mtime 近 7 天限量——防首日历史 recap 洪泛；--full-history 仅开时间窗补挖
+          从未建游标的更早文件，重置游标重挖审计用 --force；--deep 追加深度路径——hook 路径永不触网；
+          queue/force 不受时间窗限制）
 ```
 
 ### 5.2 可见性契约（快照隔离）

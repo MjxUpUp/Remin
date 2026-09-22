@@ -38,6 +38,7 @@ var searchCmd = &cobra.Command{
 		return output(func() {
 			if res.Abstained {
 				fmt.Printf("（弃权：%s——宁可不知道，不能自信地错）\n", abstainLabel(res.Reason))
+				printRootFooter(st.Root)
 				return
 			}
 			fmt.Printf("命中 %d 条（索引 v%d）：\n", len(res.Hits), res.IndexVersion)
@@ -46,6 +47,7 @@ var searchCmd = &cobra.Command{
 				fmt.Printf("   %s\n", oneLine(h.Content))
 				fmt.Printf("   来源: %s（%s）\n", h.Provenance.Origin, h.Provenance.Ref)
 			}
+			printRootFooter(st.Root)
 		}, res)
 	},
 }

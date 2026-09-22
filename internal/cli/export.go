@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/remin-dev/remin/internal/core/exporter"
 	"github.com/remin-dev/remin/internal/core/syncpkg"
@@ -75,6 +78,7 @@ var syncFlags struct {
 	setRemote string
 	pull      bool
 	push      bool
+	yes       bool // --set-remote 的私有仓确认（非 TTY 必须显式给）
 }
 
 // sync 多设备同步（git push/pull；远端仅托管，真源永在本地）
@@ -87,11 +91,25 @@ var syncCmd = &cobra.Command{
 			return fail(err)
 		}
 		if syncFlags.setRemote != "" {
+			// 防呆：记忆是高敏数据，公开远端 = 泄露全部记忆。
+			// TTY 交互确认；非 TTY（脚本/hook/CI）必须显式 --yes 自担确认。
+			if !syncFlags.yes {
+				if stdinIsTTY() {
+					// 提示走 stderr：stdout 保持可脚本化干净（评审 P3）
+					fmt.Fprintf(os.Stderr, "⚠ 记忆是高敏数据，远端必须是私有仓库。确认 %s 为私有？[y/N]: ", syncFlags.setRemote)
+					sc := bufio.NewScanner(os.Stdin)
+					if !sc.Scan() || strings.ToLower(strings.TrimSpace(sc.Text())) != "y" {
+						return fail(fmt.Errorf("未确认私有——已中止设置远端"))
+					}
+				} else {
+					return fail(fmt.Errorf("--set-remote 需 --yes 确认远端为私有仓库（记忆为高敏数据，公开远端会泄露全部记忆）"))
+				}
+			}
 			if err := syncpkg.SetRemote(st, syncFlags.setRemote); err != nil {
 				return fail(err)
 			}
 			return output(func() {
-				fmt.Printf("同步远端已设置: %s\n", syncFlags.setRemote)
+				fmt.Printf("同步远端已设置: %s（私有仓库；remin sync --push 首推）\n", syncFlags.setRemote)
 			}, map[string]interface{}{"remote": syncFlags.setRemote})
 		}
 		var out string
@@ -122,6 +140,7 @@ func init() {
 	rootCmd.AddCommand(restoreCmd)
 
 	syncCmd.Flags().StringVar(&syncFlags.setRemote, "set-remote", "", "设置远端 git url")
+	syncCmd.Flags().BoolVar(&syncFlags.yes, "yes", false, "确认远端为私有仓库（--set-remote 非 TTY 环境必须）")
 	syncCmd.Flags().BoolVar(&syncFlags.pull, "pull", false, "仅拉取")
 	syncCmd.Flags().BoolVar(&syncFlags.push, "push", false, "仅推送")
 	rootCmd.AddCommand(syncCmd)

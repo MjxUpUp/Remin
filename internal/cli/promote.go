@@ -15,11 +15,15 @@ type selectorFlags struct {
 	all    bool
 	ids    []string
 	except []string
+	typ    string // 类型分诊：批次内只作用于该类型（如 episodic 批量拒 recap）
 }
 
-// resolveIDs 解析审收选择器：--batch + --all / --id / --except
+// resolveIDs 解析审收选择器：--batch + --all / --id / --except / --type
 func resolveIDs(in *inbox.Inbox, sel selectorFlags, what string) ([]string, error) {
 	if len(sel.ids) > 0 {
+		if sel.typ != "" {
+			return nil, fmt.Errorf("--id 与 --type 互斥（--id 已精确指定候选）")
+		}
 		return sel.ids, nil
 	}
 	if sel.batch == "" {
@@ -35,6 +39,9 @@ func resolveIDs(in *inbox.Inbox, sel selectorFlags, what string) ([]string, erro
 	}
 	var ids []string
 	for _, c := range cands {
+		if sel.typ != "" && c.Type != sel.typ {
+			continue
+		}
 		if sel.all || len(sel.except) > 0 {
 			if !except[c.ID] {
 				ids = append(ids, c.ID)
@@ -42,6 +49,9 @@ func resolveIDs(in *inbox.Inbox, sel selectorFlags, what string) ([]string, erro
 		}
 	}
 	if len(ids) == 0 {
+		if sel.typ != "" {
+			return nil, fmt.Errorf("选择器未命中任何%s（--type %s 在该批次无候选）", what, sel.typ)
+		}
 		return nil, fmt.Errorf("选择器未命中任何%s（--all 未给？）", what)
 	}
 	return ids, nil
@@ -79,6 +89,7 @@ var promoteCmd = &cobra.Command{
 			for _, id := range res.Superseded {
 				fmt.Printf("  ⊖ %s 已被替代，退出检索（历史保留）\n", id)
 			}
+			printRootFooter(st.Root)
 		}, res)
 	},
 }
@@ -105,6 +116,7 @@ var rejectCmd = &cobra.Command{
 		}
 		return output(func() {
 			fmt.Printf("已拒绝并归档 %d 条（commit %s，remin log 可查）\n", len(ids), res.Commit)
+			printRootFooter(st.Root)
 		}, map[string]interface{}{"rejected": ids, "commit": res.Commit})
 	},
 }
@@ -191,12 +203,14 @@ func init() {
 	promoteCmd.Flags().BoolVar(&promoteSel.all, "all", false, "采纳批次全部候选")
 	promoteCmd.Flags().StringSliceVar(&promoteSel.ids, "id", nil, "指定候选 id（逗号分隔，可跨批次）")
 	promoteCmd.Flags().StringSliceVar(&promoteSel.except, "except", nil, "批次内排除的候选 id")
+	promoteCmd.Flags().StringVar(&promoteSel.typ, "type", "", "只作用于该类型（preference/procedural/decision/episodic/semantic）")
 	rootCmd.AddCommand(promoteCmd)
 
 	rejectCmd.Flags().StringVar(&rejectSel.batch, "batch", "", "批次 id")
 	rejectCmd.Flags().BoolVar(&rejectSel.all, "all", false, "拒绝批次全部候选")
 	rejectCmd.Flags().StringSliceVar(&rejectSel.ids, "id", nil, "指定候选 id")
 	rejectCmd.Flags().StringSliceVar(&rejectSel.except, "except", nil, "批次内排除的候选 id")
+	rejectCmd.Flags().StringVar(&rejectSel.typ, "type", "", "只作用于该类型（如 episodic 批量拒 recap）")
 	rootCmd.AddCommand(rejectCmd)
 
 	logCmd.Flags().StringVar(&logFlags.batch, "batch", "", "按批次/记忆 id 过滤")
