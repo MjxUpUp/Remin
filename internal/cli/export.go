@@ -95,7 +95,8 @@ var syncCmd = &cobra.Command{
 			// TTY 交互确认；非 TTY（脚本/hook/CI）必须显式 --yes 自担确认。
 			if !syncFlags.yes {
 				if stdinIsTTY() {
-					fmt.Printf("⚠ 记忆是高敏数据，远端必须是私有仓库。确认 %s 为私有？[y/N]: ", syncFlags.setRemote)
+					// 提示走 stderr：stdout 保持可脚本化干净（评审 P3）
+					fmt.Fprintf(os.Stderr, "⚠ 记忆是高敏数据，远端必须是私有仓库。确认 %s 为私有？[y/N]: ", syncFlags.setRemote)
 					sc := bufio.NewScanner(os.Stdin)
 					if !sc.Scan() || strings.ToLower(strings.TrimSpace(sc.Text())) != "y" {
 						return fail(fmt.Errorf("未确认私有——已中止设置远端"))

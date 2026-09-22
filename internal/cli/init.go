@@ -75,12 +75,14 @@ func initWizard(defaultRoot string) error {
 	w.Close()
 	os.Stdout = oldStdout
 	bufed, _ := io.ReadAll(r)
+	// 零输入（EOF，如 stdin=/dev/null）一率回落直通路径——含错误路径：
+	// 旧版在该场景的错误信息/退出码是行为契约的一部分，逐字节兼容（评审 P2-1）
+	if !sawInput {
+		return initPlain(defaultRoot)
+	}
 	if werr != nil {
 		os.Stdout.Write(bufed)
 		return fail(werr)
-	}
-	if !sawInput {
-		return initPlain(res.Root)
 	}
 	os.Stdout.Write(bufed)
 
@@ -88,37 +90,58 @@ func initWizard(defaultRoot string) error {
 	if err != nil {
 		return fail(err)
 	}
-	// 落 autonomy 选择
-	if res.Autonomy == config.AutonomyFast {
-		if cfg, err := config.Load(st.ConfigPath()); err == nil {
-			cfg.Autonomy = config.AutonomyFast
-			_ = cfg.Save(st.ConfigPath())
-		}
-	}
-	// 接线（复用 doctor：落位稳定路径 + 写各 agent 全局配置 + 台账）
+	// 可选步骤失败不拖垮建库，但收尾输出必须与磁盘事实一致（评审 P2-2：
+	// 静默吞错 + 无条件声明成功 = 自信地错）
+	var wireNote string
 	if res.WireAgents {
+		wireNote = "已接线: 开场注入 + 会话挖矿 + MCP（remin doctor 查看详情；remin uninstall 可摘净）"
 		if bin, err := os.Executable(); err == nil {
 			if stable, err := doctor.Stage(st.Root, bin); err == nil {
-				_, _ = doctor.Install(store.HomeDir(), st.Root, stable, false)
+				if _, ierr := doctor.Install(store.HomeDir(), st.Root, stable, false); ierr != nil {
+					wireNote = "接线未完成（remin doctor --install 重试）: " + firstLineOf(ierr.Error())
+				}
+			} else {
+				wireNote = "接线未完成（remin doctor --install 重试）: " + firstLineOf(err.Error())
 			}
 		}
 	}
-	// 备份远端（向导内已确认私有）
+	autonomyOK := true
+	if res.Autonomy == config.AutonomyFast {
+		if cfg, err := config.Load(st.ConfigPath()); err == nil {
+			cfg.Autonomy = config.AutonomyFast
+			if err := cfg.Save(st.ConfigPath()); err != nil {
+				autonomyOK = false
+			}
+		} else {
+			autonomyOK = false
+		}
+	}
+	remoteNote := ""
 	if res.Remote != "" {
-		_ = syncpkg.SetRemote(st, res.Remote)
+		if err := syncpkg.SetRemote(st, res.Remote); err != nil {
+			remoteNote = "备份远端未设置（remin sync --set-remote " + res.Remote + " --yes 重试）: " + firstLineOf(err.Error())
+		}
 	}
 	return output(func() {
 		fmt.Printf("\n真源仓库已建立: %s（VERSION=0）\n", st.Root)
 		if res.WireAgents {
-			fmt.Println("已接线: 开场注入 + 会话挖矿 + MCP（remin doctor 查看详情；remin uninstall 可摘净）")
+			fmt.Println(wireNote)
 		} else {
 			fmt.Println("未接线 agent：随时 remin doctor --install")
 		}
 		if res.Autonomy == config.AutonomyFast {
-			fmt.Println("自治档位: 快速（recap 自动生效，trust 仍标未验证；改回: config autonomy=conservative）")
+			if autonomyOK {
+				fmt.Println("自治档位: 快速（recap 自动生效，trust 仍标未验证；改回: config autonomy=conservative）")
+			} else {
+				fmt.Println("自治档位写入失败（保守档生效中；改快速: config.yaml autonomy=fast）")
+			}
 		}
 		if res.Remote != "" {
-			fmt.Printf("备份远端: %s（remin sync --push 首推）\n", res.Remote)
+			if remoteNote != "" {
+				fmt.Println(remoteNote)
+			} else {
+				fmt.Printf("备份远端: %s（remin sync --push 首推）\n", res.Remote)
+			}
 		} else {
 			fmt.Println("备份（可选）: remin sync --set-remote <私有仓库 url> --yes")
 		}

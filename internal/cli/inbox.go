@@ -41,6 +41,9 @@ var inboxCmd = &cobra.Command{
 			return fail(err)
 		}
 		in := inbox.New(st)
+		if inboxFlags.typ != "" && !validTypes[inboxFlags.typ] {
+			return fail(fmt.Errorf("未知类型 %q（可选：%s）", inboxFlags.typ, "preference/procedural/decision/episodic/semantic"))
+		}
 		if inboxFlags.batch != "" {
 			return renderCandidates(in, inboxFlags.batch)
 		}
@@ -168,6 +171,12 @@ func oneLine(s string) string {
 
 func init() {
 	inboxCmd.Flags().StringVar(&inboxFlags.batch, "batch", "", "查看指定批次详情")
-	inboxCmd.Flags().StringVar(&inboxFlags.typ, "type", "", "只看该类型（preference/procedural/decision/episodic/semantic）")
+	inboxCmd.Flags().StringVar(&inboxFlags.typ, "type", "", "只看该类型（配 --batch 详情视图生效；preference/procedural/decision/episodic/semantic）")
 	rootCmd.AddCommand(inboxCmd)
+}
+
+// validTypes 已知类型集（--type 拼错早失败，不给人空视图的错觉）
+var validTypes = map[string]bool{
+	store.TypePreference: true, store.TypeProcedural: true, store.TypeDecision: true,
+	store.TypeSemantic: true, store.TypeEpisodic: true,
 }

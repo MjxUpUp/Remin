@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -169,6 +170,7 @@ func TestSyncSetRemoteRequiresYes(t *testing.T) {
 
 func TestSyncSetRemoteWithYes(t *testing.T) {
 	withNonTTY(t)
+	t.Cleanup(func() { syncFlags.yes = false }) // cobra flag 值跨 Execute 持久，防泄漏进后续测试
 	st := testutil.NewStore(t)
 	remote := filepath.Join(t.TempDir(), "private.git")
 	rootCmd.SetArgs([]string{"sync", "--set-remote", remote, "--yes", "--root", st.Root})
@@ -258,6 +260,126 @@ func TestWizardGitIdentityMissing(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "git config") {
 		t.Fatalf("git 身份缺失应给指引: %v", err)
 	}
+}
+
+// withStdinDevNull 把 os.Stdin 换成 /dev/null（真实 char device + 立即 EOF——
+// 不注入 stdinIsTTY，走产品真实判定路径；评审 P2-3：红线最薄处必须有 CLI 级测试）
+func withStdinDevNull(t *testing.T) {
+	t.Helper()
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldIn, oldTTY := os.Stdin, stdinIsTTY
+	os.Stdin = f
+	t.Cleanup(func() {
+		os.Stdin = oldIn
+		stdinIsTTY = oldTTY
+		f.Close()
+	})
+}
+
+// char-device stdin + EOF（</dev/null 防挂起的 CI 形态）→ 走直通路径，
+// stdout 零向导泄漏，git 身份缺失时错误与旧版一致（评审 P2-1 契约）
+func TestInitCharDeviceEOFAllPlain(t *testing.T) {
+	withStdinDevNull(t)
+	root := filepath.Join(t.TempDir(), "remin-store")
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t.local")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t.local")
+	rootCmd.SetArgs([]string{"init", "--root", root})
+	out := captureStdout(t, func() {
+		if err := rootCmd.Execute(); err != nil {
+			t.Errorf("init 应成功: %v", err)
+		}
+	})
+	if !strings.Contains(out, "真源仓库已建立") || strings.Contains(out, "向导") {
+		t.Errorf("EOF 应回落直通输出，零向导泄漏:\n%s", out)
+	}
+}
+
+func TestInitCharDeviceEOFIdentityMissingOldBehavior(t *testing.T) {
+	withStdinDevNull(t)
+	// 清空身份（环境变量全空 = 无 global 配置的 CI 形态）
+	t.Setenv("GIT_AUTHOR_NAME", "")
+	t.Setenv("GIT_AUTHOR_EMAIL", "")
+	t.Setenv("GIT_COMMITTER_NAME", "")
+	t.Setenv("GIT_COMMITTER_EMAIL", "")
+	root := filepath.Join(t.TempDir(), "remin-store")
+	rootCmd.SetArgs([]string{"init", "--root", root})
+	out := captureStdout(t, func() {
+		if err := rootCmd.Execute(); err == nil {
+			t.Error("缺 git 身份应失败")
+		}
+	})
+	if strings.Contains(out, "向导") {
+		t.Errorf("错误路径同样不得泄漏向导提示（评审 P2-1）:\n%s", out)
+	}
+}
+
+// —— sync TTY 确认分支（评审 P2-3：此前零测试） ——
+
+func TestSyncSetRemoteTTYConfirmEOF(t *testing.T) {
+	// char-device stdin + EOF：TTY 分支提示后读到 EOF → fail-closed，远端不设置
+	withStdinDevNull(t)
+	st := testutil.NewStore(t)
+	remote := filepath.Join(t.TempDir(), "private.git")
+	rootCmd.SetArgs([]string{"sync", "--set-remote", remote, "--root", st.Root})
+	errText := captureStderr(t, func() {
+		if err := rootCmd.Execute(); err == nil {
+			t.Error("EOF 未确认应失败")
+		}
+	})
+	if !strings.Contains(errText, "私有") {
+		t.Errorf("fail-closed 错误应含私有: %s", errText)
+	}
+}
+
+func TestSyncSetRemoteTTYConfirmYes(t *testing.T) {
+	// TTY 判定注入为 true + 管道喂 "y"：确认通过并设置
+	oldTTY := stdinIsTTY
+	stdinIsTTY = func() bool { return true }
+	t.Cleanup(func() { stdinIsTTY = oldTTY })
+	st := testutil.NewStore(t)
+	remote := filepath.Join(t.TempDir(), "private.git")
+	oldIn := os.Stdin
+	pr, pw, _ := os.Pipe()
+	pw.WriteString("y\n")
+	pw.Close()
+	os.Stdin = pr
+	t.Cleanup(func() { os.Stdin = oldIn })
+	rootCmd.SetArgs([]string{"sync", "--set-remote", remote, "--root", st.Root})
+	out := captureStdout(t, func() {
+		if err := rootCmd.Execute(); err != nil {
+			t.Errorf("确认 y 应通过: %v", err)
+		}
+	})
+	if !strings.Contains(out, "同步远端已设置") {
+		t.Errorf("应设置成功: %s", out)
+	}
+}
+
+func TestInboxUnknownTypeRejected(t *testing.T) {
+	st, _ := mixedBatch(t)
+	rootCmd.SetArgs([]string{"inbox", "--batch", "whatever", "--type", "opinion", "--root", st.Root})
+	errText := captureStderr(t, func() {
+		if err := rootCmd.Execute(); err == nil {
+			t.Error("未知类型应报错")
+		}
+	})
+	if !strings.Contains(errText, "未知类型") {
+		t.Errorf("拼错类型应早失败: %s", errText)
+	}
+}
+
+func TestResolveIDsIDAndTypeConflict(t *testing.T) {
+	st, batch := mixedBatch(t)
+	in := inbox.New(st)
+	if _, err := resolveIDs(in, selectorFlags{ids: []string{"x"}, typ: store.TypeEpisodic}, "候选"); err == nil || !strings.Contains(err.Error(), "互斥") {
+		t.Errorf("--id 与 --type 同给应显式报错: %v", err)
+	}
+	_ = batch
 }
 
 // —— P1-⑤ 非 TTY init 行为不变 ——

@@ -21,6 +21,9 @@ type selectorFlags struct {
 // resolveIDs 解析审收选择器：--batch + --all / --id / --except / --type
 func resolveIDs(in *inbox.Inbox, sel selectorFlags, what string) ([]string, error) {
 	if len(sel.ids) > 0 {
+		if sel.typ != "" {
+			return nil, fmt.Errorf("--id 与 --type 互斥（--id 已精确指定候选）")
+		}
 		return sel.ids, nil
 	}
 	if sel.batch == "" {
@@ -46,7 +49,10 @@ func resolveIDs(in *inbox.Inbox, sel selectorFlags, what string) ([]string, erro
 		}
 	}
 	if len(ids) == 0 {
-		return nil, fmt.Errorf("选择器未命中任何%s（--all 未给？--type %s 无候选？）", what, sel.typ)
+		if sel.typ != "" {
+			return nil, fmt.Errorf("选择器未命中任何%s（--type %s 在该批次无候选）", what, sel.typ)
+		}
+		return nil, fmt.Errorf("选择器未命中任何%s（--all 未给？）", what)
 	}
 	return ids, nil
 }

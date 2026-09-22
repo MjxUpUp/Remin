@@ -9,8 +9,8 @@ import (
 	"github.com/remin-dev/remin/internal/store"
 )
 
-// 触点透明（新用户反馈「不知道记忆存到哪」）：人面命令文本输出统一尾部真源路径。
-// json 模式不加——结构化消费者自己知道 root。
+// 触点透明（新用户反馈「不知道记忆存到哪」）：人面命令文本输出尾部统一真源路径。
+// 当前覆盖 mine/inbox/promote/reject/search/status（json 模式不加——结构化消费者自己知道 root）。
 
 // abbrevHome 路径 ~ 缩写（与用户心智一致：真源就在 ~/.remin）
 func abbrevHome(p string) string {
@@ -22,6 +22,14 @@ func abbrevHome(p string) string {
 
 func printRootFooter(root string) {
 	fmt.Printf("\n真源: %s\n", abbrevHome(root))
+}
+
+// firstLineOf 多行错误取首行（向导收尾提示单行化）
+func firstLineOf(s string) string {
+	if i := strings.Index(s, "\n"); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // stdinIsTTY stdin 是否为交互终端（向导/交互确认的触发条件；非 TTY 一切保持旧行为）。
@@ -55,14 +63,15 @@ type wizardResult struct {
 func runInitWizard(read func() string, env wizardEnv) (*wizardResult, error) {
 	res := &wizardResult{Root: env.DefaultRoot, Autonomy: "conservative", WireAgents: true}
 
-	fmt.Println("── Remin 初始化向导 ──（每步回车取默认）")
+	fmt.Println("── Remin 初始化向导 ──（每步回车取默认；Ctrl-C 中止）")
+	// 身份检查前置（评审 P3：放在路径输入前，身份缺失时用户不白输路径）
+	if _, err := env.GitIdentity(); err != nil {
+		return nil, fmt.Errorf("git 身份未配置（审收动作需要可归因）：\n  git config --global user.name  \"你的名字\"\n  git config --global user.email \"你的邮箱\"\n配置后重跑 remin init 继续")
+	}
+
 	fmt.Printf("\n1/4 记忆真源位置（你的私有 git 仓库，记忆归你所有）\n  [%s] ", env.DefaultRoot)
 	if in := strings.TrimSpace(read()); in != "" {
 		res.Root = in
-	}
-
-	if _, err := env.GitIdentity(); err != nil {
-		return nil, fmt.Errorf("git 身份未配置（审收动作需要可归因）：\n  git config --global user.name  \"你的名字\"\n  git config --global user.email \"你的邮箱\"\n配置后重跑 remin init 继续")
 	}
 
 	fmt.Println("\n2/4 审收自治档位")
