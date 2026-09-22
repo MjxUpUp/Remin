@@ -20,7 +20,9 @@
   （幂等指纹，默认 dry-run）；`push --to notion|feishu` 把记忆视图单向发布为新页面
   （heading/段落/列表块映射；只创建、永不回写——视图是真源派生物）。零 SDK（stdlib 直连
   官方 REST），密钥只走环境变量（REMIN_NOTION_TOKEN / REMIN_FEISHU_APP_ID+SECRET），
-  目标 ID 配置在 config `bridge:` 节（非密钥，随真源 git）。
+  目标 ID 配置在 config `bridge:` 节（非密钥，随真源 git）。可靠性如实处理：拉取分页拉全
+  （飞书含 wiki 树遍历），推送块数按平台上限分批（Notion 100/批、飞书 50/批），
+  单篇失败跳过并逐名列出（不静默少拉），`--json` 契约含 applied/pulled/skipped/report。
 - **任务提升评测（uplift）**：`eval run --suite uplift`（入 all）——同一任务集「空库基线
   vs 带记忆」差值归因记忆贡献（recall/弃权不计分/superseded 零命中/注入面同验，全规则可判定）；
   `remin eval uplift --tasks <file> [--record]` 真源实测模式（自备任务集 JSONL，只读检索面）；
