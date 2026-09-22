@@ -100,7 +100,15 @@ func (s *Searcher) Search(query string, opts Options) Result {
 		opts.Now = time.Now()
 	}
 	qTerms, _ := index.Tokenize(query)
+	// 词级 term（汉字二元组或 ≥2 字西文词）：散单字是高频随机碰撞，不构成置信
+	wordTerms := map[string]bool{}
+	for t := range qTerms {
+		if len([]rune(t)) >= 2 {
+			wordTerms[t] = true
+		}
+	}
 	var hits []Hit
+	matchedWord := map[string]bool{} // doc 是否与查询共享词级 term
 	for _, d := range s.idx.Docs {
 		if !visible(d, opts.Now) {
 			continue
@@ -113,6 +121,9 @@ func (s *Searcher) Search(query string, opts Options) Result {
 			tf := float64(d.Terms[t])
 			if tf == 0 {
 				continue
+			}
+			if wordTerms[t] {
+				matchedWord[d.ID] = true
 			}
 			idf := s.idf[t]
 			dl := float64(d.Len)
@@ -142,6 +153,18 @@ func (s *Searcher) Search(query string, opts Options) Result {
 		}
 		return hits[i].ID < hits[j].ID
 	})
+	// 词级重合判据（A5 宁可不知道）：最高命中与查询须至少共享一个词级 term——
+	// 仅散单字重合（高频字随机碰撞，垃圾填充查询的典型形态）不足以置信，弃权。
+	// 只判最高命中：top 即答案——若 top 的分数本身是碰撞驱动的，整个结果集不可信，
+	// 降级取次名命中同样是自信地错。判据确定性且与库规模无关（分数阈值无法分离
+	// 长垃圾查询与简短合法查询，uplift 真源实测证实）。纯单字查询同样按此弃权
+	// （单字不构成词级信号）。
+	if !matchedWord[hits[0].ID] {
+		res.Hits = nil
+		res.Abstained = true
+		res.Reason = "word_match_required"
+		return res
+	}
 	if hits[0].Score < MinScore {
 		res.Hits = nil
 		res.Abstained = true
