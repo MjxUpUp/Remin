@@ -1,7 +1,15 @@
-# HANDOFF — v0.5.0 已发版（2026-09-22）
+# HANDOFF — v0.6.0 已发版（2026-09-23）
 
 > forge task 为真相源（`forge task context --ref <ref>` 拉回全部决策/发现/下一步）；本文件是其文本导出视图。
 > 前情：路线图六项（idle-tick/adapters/parity-live/uplift/bridge/gui）+ 弃权校准修复，全部经 forge 三门禁 + 对抗审查 + doc-review 合入 main。
+
+## 发版结果（v0.6.0，2026-09-23）
+
+- **npm 六包官方源核实**：main + 五平台包全部 0.6.0，latest 已切。
+- **GitHub Release**：https://github.com/MjxUpUp/Remin/releases/tag/v0.6.0（11 资产；notes 含升级提示/回滚配方/已知事项）。
+- **readiness**：双只读审计——风险面 M1 修复后全 PASS（root.go 兜底漏改被审计抓到，当场补 a10d737）+ M6 强制 GO-WITH-RISK 注记（无文档自动守卫）；运行面 M3/M4/M7/R1 全 PASS（体积 +0.47%、零新依赖、v0.5.0↔v0.6.0 双向兼容实测、回滚 runbook）。
+- **装机验证**：真实 npm 安装路径全命令面通过；用户 `~/.remin/bin` 已升级 v0.6.0。
+- **运维（同日）**：用户真实库批量清——538 批次 741 候选按新启发式分层，720 条拒并归档（每批原子提交），16 条过线候选留 3 批次待人审（UI 一键过）。
 
 ## 发版结果（v0.5.0）
 
