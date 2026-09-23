@@ -29,14 +29,14 @@ type LLMConfig struct {
 // BridgeNotionConfig Notion 桥（密钥走 REMIN_NOTION_TOKEN，不落 yaml）
 type BridgeNotionConfig struct {
 	Base         string `yaml:"api_base,omitempty"` // 缺省官方端点；测试注入假端点
-	ParentPageID string `yaml:"parent_page_id"`    // pull 子页来源 / push 落点父页
+	ParentPageID string `yaml:"parent_page_id"`     // pull 子页来源 / push 落点父页
 }
 
 // BridgeFeishuConfig 飞书桥（密钥走 REMIN_FEISHU_APP_ID/SECRET，不落 yaml）
 type BridgeFeishuConfig struct {
 	Base            string `yaml:"api_base,omitempty"`
-	WikiSpaceID     string `yaml:"wiki_space_id"`      // pull 的 wiki 空间
-	PushFolderToken string `yaml:"push_folder_token"`  // push 落点文件夹
+	WikiSpaceID     string `yaml:"wiki_space_id"`     // pull 的 wiki 空间
+	PushFolderToken string `yaml:"push_folder_token"` // push 落点文件夹
 }
 
 // BridgeConfig 笔记桥节（目标 ID 是非密钥配置；密钥永不在 git 真源内）
