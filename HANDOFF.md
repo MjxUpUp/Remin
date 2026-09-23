@@ -45,6 +45,17 @@
 - M6 文档一致性守卫：下次发布前建议建 docs-consistency-guard 自动化测试（本次 GO-WITH-RISK 注记）。
 - hazard 台账待用户核查清账（`forge hazard confirm --last`）。
 
+## 2026-09-23 追加（启发式精度 + agent 深提取）
+
+- **feat/heuristic-precision**（已合 main）：正文=触发句+触发词语境收紧（61 条真实噪声批次
+  校准存活 33/-46%；审查四过 kill 修正——记得+动词/以后间隔形态/别忘了类型/决策跨句句对窗口）。
+- **feat/agent-deep-extract**（已合 main，89/B）：**agent headless 深提取引擎**——本机 agent
+  （claude -p / codex exec）第一优先级，手动 llm 端点第二（用户定义，企业合规/额度友好）；
+  REMIN_DEEP_ENGINE=llm|agent 独占钉扎。子进程加固全套（WaitDelay 硬杀/临时 CWD/工具面归零/
+  env 净化/回灌哨兵）；审查 P1×1 P2×4 全修；mutation 6/6。**本机即刻可用**：`remin mine --deep`
+  零配置（真机冒烟：蒸馏候选含事故背景，quote 全过守卫）。
+- 用户想法均已落地；待用户实测反馈。
+
 ## feat/ui-v2（2026-09-23，追加）
 
 - **remin ui 交互迭代**：11 项原型确认全数落地（三栏工作台/状态带/键盘审收流 j·k·a·r·?/
