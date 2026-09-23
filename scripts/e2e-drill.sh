@@ -16,6 +16,8 @@ export REMIN_TRANSCRIPT_ROOTS="$SB/claude/projects"
 export REMIN_CLAUDE_DIR="$SB/claude/projects"
 # 多根发现隔离：防止真实 ~/.codex、~/.dsh 会话泄入演练（步骤 17 按命令内联覆盖）
 export REMIN_CODEX_DIR="$SB/codex-empty"
+# 深提取引擎钉 llm：演练世界用假 LLM 端点（防本机真 agent 抢占引擎解析）
+export REMIN_DEEP_ENGINE=llm
 export REMIN_DSH_DIR="$SB/dsh-empty"
 mkdir -p "$REMIN_CODEX_DIR" "$REMIN_DSH_DIR"
 export GIT_AUTHOR_NAME="演练用户" GIT_AUTHOR_EMAIL=demo@remin.local

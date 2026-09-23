@@ -86,7 +86,7 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 | `remin init [--defaults]` | 创建真源仓库（`--root`/`$REMIN_HOME` 可指定位置）；TTY 下交互式向导（非 TTY 自动直通） |
 | `remin doctor [--install] [--takeover]` | 检测已装 agent / 一键接线 / 健康检查 / 接管同名 memory server |
 | `remin propose` | 显式记忆提案（进 inbox 待审） |
-| `remin mine [--dry-run] [--force] [--from-queue] [--deep] [--since N\|--full-history]` | transcript 挖矿（多格式：Claude Code JSONL + Codex rollout + DSH session，增量断点续挖）；默认仅挖 mtime 近 7 天（首挖限量防历史 recap 洪泛），`--full-history` 显式不限时间窗（补挖更早）；`--deep` 追加 LLM 深度提取（见下方「深度提取」）；配置 llm 端点时，快挖处理过的行段自动挂账 deep 待挖队列（闲时 tick 深挖）。发现根：`~/.claude/projects`、`~/.codex/sessions`、`~/.dsh/sessions` + `REMIN_TRANSCRIPT_ROOTS`（`REMIN_CLAUDE_DIR`/`REMIN_CODEX_DIR`/`REMIN_DSH_DIR` 可覆盖）；候选 provenance.origin 随源（claude-code/codex/dsh） |
+| `remin mine [--dry-run] [--force] [--from-queue] [--deep] [--since N\|--full-history]` | transcript 挖矿（多格式：Claude Code JSONL + Codex rollout + DSH session，增量断点续挖）；默认仅挖 mtime 近 7 天（首挖限量防历史 recap 洪泛），`--full-history` 显式不限时间窗（补挖更早）；`--deep` 追加深度提取（引擎自动解析：本机 agent headless 第一优先级，手动 llm 端点第二——见下方「深度提取」）；深提取引擎可用时（agent 在场或端点已配），快挖处理过的行段自动挂账 deep 待挖队列（闲时 tick 深挖）。发现根：`~/.claude/projects`、`~/.codex/sessions`、`~/.dsh/sessions` + `REMIN_TRANSCRIPT_ROOTS`（`REMIN_CLAUDE_DIR`/`REMIN_CODEX_DIR`/`REMIN_DSH_DIR` 可覆盖）；候选 provenance.origin 随源（claude-code/codex/dsh） |
 | `remin tick [--deep-max N] [--since N\|--full-history]` | 闲时增量维护：增量快挖 + deep 待挖排空（每 tick 限段防长跑；密钥不在场保留队列；弃权段出队不重试）——供 OS 调度器按档拉起，无常驻 daemon |
 | `remin tick schedule install [--every 4h] / remove / status` | OS 调度器接线（macOS launchd / Linux systemd user timer；effect 挂接线台账，`remin uninstall` 可回放摘除；间隔下限 15m） |
 | `remin import [--from 来源] [--path 路径] [--apply]` | 从既有产品迁移（claude-auto-memory / claude-mem / chatgpt-export / codex-memories / markdown-dir；默认 dry-run，幂等只报增量；markdown-dir 为用户亲笔 → human-verified） |
@@ -115,7 +115,12 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 
 快速路径是启发式 regex（零 LLM、离线可用、确定性），抓不到自然表达的记忆。`remin mine --deep` 追加 LLM 语义提取补充召回，宪法约束不放松：
 
-- **零 SDK**：stdlib 直连 OpenAI 兼容端点（`config.yaml` 的 `llm:` 节，`endpoint`/`model`/`timeout_ms`）
+- **引擎解析序（用户定义）**：**第一优先级——本机 agent headless**（探测到 claude/codex CLI 即用其一次性会话；
+  数据不产生新的外流面——同源 transcript（claude 挖 claude 产的）完全不离开该 agent 生态，
+  跨源场景（如 claude 引擎挖 dsh transcript）走 claude 已有的合规通道而非新端点；复用你已有的
+  订阅额度，企业内合规友好）；
+  第二选择——手动配置 OpenAI 兼容端点（`config.yaml` 的 `llm:` 节，`endpoint`/`model`/`timeout_ms`，stdlib 直连零 SDK）。
+  两种引擎共用同一 quote 逐字溯源守卫与弃权语义；`REMIN_DEEP_ENGINE=llm|agent` 可钉扎引擎（跳过探测）
 - **密钥不落盘**：只从环境变量 `REMIN_LLM_API_KEY` 读——config.yaml 在 git 真源内，密钥写盘等于提交进历史
 - **弃权优于编造**（P3-A5）：LLM 返回的每条候选必须带 `quote` 且逐字溯源到源会话文本（空白归一），对不上即拒收；端点失败/响应异常 → 该次弃权（报告 Note 披露），快速路径结果不受影响
 - **只产候选**：与快速路径同构，trust=unverified 进 inbox 人审，LLM 无落库权；origin 标注 `claude-code·deep` 可区分
@@ -131,6 +136,8 @@ llm:
 ```
 
 ```bash
+remin mine --deep          # 本机已装 claude/codex 并登录 → 直接可用（零配置）
+# 或走自配端点：
 export REMIN_LLM_API_KEY=sk-...
 remin mine --deep
 ```

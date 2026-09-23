@@ -14,6 +14,7 @@ import (
 // CLI 接线契约：tick 走 --json 包络；schedule install/remove/status 可驱动。
 
 func TestTickCommandJSON(t *testing.T) {
+	t.Setenv("REMIN_DEEP_ENGINE", "llm") // 钉 llm：防本机真 agent 在场绕过无配置断言
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	tp := filepath.Join(dir, "s.jsonl")

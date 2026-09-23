@@ -1,4 +1,4 @@
-# Remin 系统架构设计（v1.2）
+# Remin 系统架构设计（v1.3）
 
 > 本文是《Remin（随忆）技术设计方案 v1.0》（飞书）在仓库内的落地版：技术选型定案（见 [ADR 索引](../adr/README.md)）、组件与包结构、接口契约、前端交互设计与 M0-M6 实施切片。
 > 上位文档：[PRINCIPLES.md](../../PRINCIPLES.md)（宪法，冲突时以宪法为准）· [记忆格式 spec v0](../spec/memory-format-v0.md)。
@@ -99,7 +99,9 @@ Stop hook / 日志落盘 → queue.jsonl（按 transcript 路径幂等去重）
   → Extractor 快速路径（启发式，零 LLM，硬预算内）→ inbox 批次（trust=unverified；
      provenance.origin 随源 claude-code/codex/dsh）
   → [opt-in] Extractor 深度路径（手动 remin mine --deep 或闲时 tick 排空 deep 待挖队列：
-     OpenAI 兼容端点可配，quote 逐字溯源守卫——编造候选拒收，失败即弃权不拖垮快速路径）
+     引擎解析序=本机 agent headless 第一[claude -p/codex exec 一次性会话，prompt 走 stdin，
+     工具面归零+临时 CWD+env 净化+WaitDelay 硬杀] > OpenAI 兼容端点第二[REMIN_DEEP_ENGINE 可钉扎]；
+     两引擎共用 quote 逐字溯源守卫——编造候选拒收，失败即弃权不拖垮快速路径）
      → inbox 批次（mine --deep 并入同批；tick 深挖独立成批并跨批次 body 去重）
   → 人审 promote（原子提交）
 触发点：会话结束（Stop 入队，agent 零延迟）/ 开场追赶（inject 内，硬预算 800ms，超时降级）
@@ -107,7 +109,8 @@ Stop hook / 日志落盘 → queue.jsonl（按 transcript 路径幂等去重）
           从未建游标的更早文件，重置游标重挖审计用 --force；--deep 追加深度路径——hook 路径永不触网；
           queue/force 不受时间窗限制）
         / 闲时 tick（OS 调度器按档拉起一次性 remin tick：增量快挖 + deep 待挖队列排空
-          （每 tick 预算限段，密钥不在场保留队列；配置 llm 端点时快挖挂账 deep-queue.jsonl——
+          （每 tick 预算限段，密钥不在场保留队列；深提取引擎可用时（agent 在场或 llm 端点已配）
+          快挖挂账 deep-queue.jsonl，含哨兵的提取会话回声被跳过——
           手动 --deep 按实际深挖区间出队不重复计费；无常驻 daemon））
 ```
 
@@ -135,7 +138,7 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | `remin init` | `--root` | 创建真源 git 仓库（目录骨架、.gitignore、config.yaml、VERSION=0、首提交） |
 | `remin doctor` | `--install` `--takeover` | 检测已装 agent / 一键接线（写前备份）/ 健康检查 / 接管同名 memory server |
 | `remin propose` | `--type --facet --context --origin --ref --quote [--ephemeral] [--verify-condition]` | 显式记忆提案 → inbox（human 面通道） |
-| `remin mine` | `--dry-run` `--force` `--from-queue` `--deep` `--since\|--full-history` | transcript 挖矿（三格式路径分派；增量断点续挖；--force 全量重挖；--deep 追加 LLM 深度路径；配置 llm 端点时快挖自动挂账 deep 待挖队列） |
+| `remin mine` | `--dry-run` `--force` `--from-queue` `--deep` `--since\|--full-history` | transcript 挖矿（三格式路径分派；增量断点续挖；--force 全量重挖；--deep 追加深度提取——引擎自动解析 agent 第一/llm 第二；深引擎可用时快挖自动挂账 deep 待挖队列） |
 | `remin tick` | `--deep-max` `--since\|--full-history` | 闲时增量维护：增量快挖 + deep 待挖排空（OS 调度器按档拉起，无常驻 daemon；弃权段出队不重试） |
 | `remin tick schedule` | `install --every` / `remove` / `status` | OS 调度器接线（macOS launchd / Linux systemd user timer；effect 挂接线台账，uninstall 回放摘除） |
 | `remin import` | `--from --path --apply` | 五来源迁移；默认 dry-run 分析报告；--apply 生成 inbox 批次；幂等只报增量 |
@@ -260,7 +263,7 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 | CLI | cobra；全命令 --json | [0005](../adr/0005-cobra-cli-json.md) |
 | 边缘 | 零适配器代码（doctor 写全局配置直调 CLI） | [0006](../adr/0006-zero-adapter-edge.md) |
 | claude-mem SQLite | shell out sqlite3（系统自带），零 CGo 依赖 | [0007](../adr/0007-sqlite-shellout.md) |
-| LLM | 仅 Extractor 深度路径：stdlib 直连 OpenAI 兼容端点（config `llm:` 节，零 SDK），密钥走 `REMIN_LLM_API_KEY` 不落盘；快速路径零 LLM | 本仓库 README「深度提取」；内部测试用 httptest 假端点（不依赖真实模型） |
+| LLM | Extractor 深度路径双引擎：本机 agent headless 第一优先级（claude -p/codex exec，零外流面复用订阅）+ OpenAI 兼容端点第二（config `llm:` 节，零 SDK），密钥走 `REMIN_LLM_API_KEY` 不落盘且不进 agent 子进程；快速路径零 LLM | 本仓库 README「深度提取」；内部测试用 httptest 假端点+假 agent 脚本（不依赖真实模型） |
 
 ## 12. 宪法映射（验收清单）
 

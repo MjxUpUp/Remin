@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/remin-dev/remin/internal/core/config"
+	"github.com/remin-dev/remin/internal/core/extractor"
 	"github.com/remin-dev/remin/internal/core/inbox"
 	"github.com/remin-dev/remin/internal/testutil"
 )
@@ -64,6 +66,7 @@ func TestDeepQueueRemoveCovered(t *testing.T) {
 // TestMineIncrementalDeepKeepsEarlierSegments 增量 --deep（断点续挖）不得出队
 // 断点前从未深挖的待挖段——只出队本次真正深挖的区间（审查 P1 修复的杀灭测试）
 func TestMineIncrementalDeepKeepsEarlierSegments(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	tp := transcript(dir, sessID+".jsonl")
@@ -140,6 +143,7 @@ func TestMineEnqueuesDeepRange(t *testing.T) {
 
 // TestMineNoDeepQueueWithoutLLM 未配置 llm 节不入队（队列不为无深路径用户增长）
 func TestMineNoDeepQueueWithoutLLM(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	writeTranscript(t, transcript(dir, sessID+".jsonl"), deepFixture)
@@ -154,6 +158,7 @@ func TestMineNoDeepQueueWithoutLLM(t *testing.T) {
 
 // TestMineDeepConsumesQueue 手动 --deep 深挖后，该文件待挖段应出队
 func TestMineDeepConsumesQueue(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	tp := transcript(dir, sessID+".jsonl")
@@ -182,6 +187,7 @@ func TestMineDeepConsumesQueue(t *testing.T) {
 
 // TestTickDrainsDeepQueue tick 端到端：增量快挖 → 排空 deep 队列 → 候选落 inbox
 func TestTickDrainsDeepQueue(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	writeTranscript(t, transcript(dir, sessID+".jsonl"), deepFixture)
@@ -226,6 +232,7 @@ func TestTickDrainsDeepQueue(t *testing.T) {
 
 // TestTickKeepsQueueWithoutKey 密钥不在场：队列保留并披露
 func TestTickKeepsQueueWithoutKey(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	writeTranscript(t, transcript(dir, sessID+".jsonl"), deepFixture)
@@ -246,6 +253,7 @@ func TestTickKeepsQueueWithoutKey(t *testing.T) {
 
 // TestTickAbstainsOnFailure 端点失败：该段弃权出队（不重试防毒丸），报告披露
 func TestTickAbstainsOnFailure(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	writeTranscript(t, transcript(dir, sessID+".jsonl"), deepFixture)
@@ -274,6 +282,7 @@ func TestTickAbstainsOnFailure(t *testing.T) {
 
 // TestTickRespectsDeepBudget 每 tick 深挖预算：超额段留队列下次 tick 续挖
 func TestTickRespectsDeepBudget(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	writeTranscript(t, transcript(dir, sessID+"-1.jsonl"), deepFixture)
@@ -296,6 +305,7 @@ func TestTickRespectsDeepBudget(t *testing.T) {
 
 // TestTickDeepSuppressesExistingBodies 与既有 inbox 候选同 body 的深挖候选应抑制（跨批次去重）
 func TestTickDeepSuppressesExistingBodies(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	// 触发词 fixture：快挖产 typed 候选；深路径返回同 body → 应抑制
@@ -319,6 +329,7 @@ func TestTickDeepSuppressesExistingBodies(t *testing.T) {
 // TestTickPersistsLastReport tick 留档（webui 深挖徽章数据面）：跑一次 tick 后可读回，
 // 未跑过时 LoadTickLast 返回 nil（徽章降级为只显待挖数）
 func TestTickPersistsLastReport(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	if LoadTickLast(st.Root) != nil {
 		t.Fatal("未跑过 tick 应无留档")
@@ -336,4 +347,16 @@ func TestTickPersistsLastReport(t *testing.T) {
 	if last.TS == "" || last.Rep.Mine == nil || last.Rep.Mine.Candidates != rep.Mine.Candidates {
 		t.Fatalf("留档内容失真: %+v", last)
 	}
+}
+
+// stubNoDeepAgents 测试替身：屏蔽本机真实 agent（引擎解析回 llm/none 路径——
+// 开发机上 claude/codex 在场会让 llm 路径测试走真 agent 调用）
+func stubNoDeepAgents(t *testing.T) {
+	t.Helper()
+	t.Setenv("REMIN_DEEP_ENGINE", "") // 清钉扎（防开发者 shell 里带 pin 跑测试）
+	old := extractor.DeepAgentLookPath
+	extractor.DeepAgentLookPath = func(string) (string, error) {
+		return "", os.ErrNotExist
+	}
+	t.Cleanup(func() { extractor.DeepAgentLookPath = old })
 }

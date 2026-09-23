@@ -50,6 +50,7 @@ func quoteJSON(s string) string {
 }
 
 func TestMineDeepMergesFastAndDeep(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	writeTranscript(t, transcript(dir, sessID+".jsonl"), deepFixture)
@@ -87,6 +88,7 @@ func TestMineDeepMergesFastAndDeep(t *testing.T) {
 }
 
 func TestMineDeepUnconfiguredFailsFast(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	writeTranscript(t, transcript(dir, sessID+".jsonl"), deepFixture)
@@ -108,6 +110,7 @@ func TestMineDeepUnconfiguredFailsFast(t *testing.T) {
 
 // 快速路径与深路径同 body：快速路径优先，深路径重复被抑制
 func TestMineDeepSuppressesDuplicateBodies(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	// 带触发词的 fixture：快速路径产 1 条 typed 候选 + recap
@@ -141,6 +144,7 @@ func TestMineDeepSuppressesDuplicateBodies(t *testing.T) {
 }
 
 func TestMineDeepEndpointFailureDegrades(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	writeTranscript(t, transcript(dir, sessID+".jsonl"), deepFixture)
