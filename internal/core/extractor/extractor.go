@@ -32,20 +32,76 @@ func originOf(origin string) string {
 	return "claude-code"
 }
 
-// 用户显式指令（「现在就记」类）：最强信号
-var userDirective = regexp.MustCompile(`(?i)(记住|记得|以后请|以后要|以后|总是|永远|别再|不要再用|每次都|always |never |prefer |remember |from now on )`)
+// 用户显式指令（「现在就记」类）：最强信号。
+// 收紧（真实库 61 条诊断）：裸「以后」是时间用法（以后再说/以后的版本），保留指令
+// 形态与「以后…都/要」间隔形态；裸「记得」保留但由 userRecallVeto 排除回忆形态。
+var userDirective = regexp.MustCompile(`(?i)(记住|记得|别忘了|以后(请|要|都|别)|以后.{0,6}(都|要)|总是|永远|别再|不要再用|每次都|always |never |prefer |remember to |from now on )`)
 
-// 用户程序性指令（怎么做）
+// 回忆形态否决：「我记得/不记得/还记得/记得吗」是叙述不是指令（记得×11 误触主因）
+var userRecallVeto = regexp.MustCompile(`(我记得|不记得|还记得|记得吗|谁记得)`)
+
+// 用户程序性指令（怎么做）。「别忘了」归 procedural（v0 类型行为保持）
 var userProcedural = regexp.MustCompile(`(?i)(必须|先跑|先执行|先跑一下|再执行|之前要|别忘了|务必|make sure to|before .* run)`)
 
 // 助手决策表达（为什么选 X）
 var assistantDecision = regexp.MustCompile(`(?i)(我们决定|最终选择|最终决定|决定选|选了.+而不是|而非).{0,40}(因为|原因是|due to|because)`)
 
-// 教训/坑
-var assistantLesson = regexp.MustCompile(`(?i)(教训|踩坑|这个坑|失败的原因|根因是|root cause|lesson)`)
+// 教训/坑。收紧：裸「教训」在行文中是随口引用（「先把状态与教训落盘」），
+// 要求总结形态（这条/一条/方法论…教训、教训是、吸取教训）；
+// 裸 root cause 是排查叙述（Confirming the root cause），仅保留中文「根因是」。
+var assistantLesson = regexp.MustCompile(`(?i)((这条|一条|个|方法论|惨痛|深刻).{0,2}教训|教训是|吸取教训|记住.{0,6}教训|踩坑|这个坑|失败的原因|根因是|lesson)`)
 
 // recap 默认有效期
 const RecapExpires = "7d"
+
+// splitSentences 按句边界切句（与 firstSentence 同一套分隔符）
+func splitSentences(text string) []string {
+	var out []string
+	start := 0
+	for i, r := range text {
+		if r == '\n' || r == '。' || r == '；' || r == ';' {
+			if s := strings.TrimSpace(text[start:i]); s != "" {
+				out = append(out, s)
+			}
+			start = i + len(string(r))
+		}
+	}
+	if s := strings.TrimSpace(text[start:]); s != "" {
+		out = append(out, s)
+	}
+	return out
+}
+
+// triggerSentence 返回首条命中触发词的句子（正文=触发句：消息首句常是与触发点
+// 无关的状态播报——真实库 61 条中 24 条正文与触发点脱节）。veto 非空时先否决
+// （回忆形态）。未命中返回空。
+func triggerSentence(text string, veto *regexp.Regexp, pats ...*regexp.Regexp) string {
+	for _, s := range splitSentences(text) {
+		if veto != nil && veto.MatchString(s) {
+			continue
+		}
+		for _, p := range pats {
+			if p.MatchString(s) {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// triggerPair 句对窗口匹配：决策表达常跨句（「我们决定选 A。原因是 X。」——句级
+// 化后单句不命中，需当前句+下一句拼接窗口）。返回决策起始句。
+func triggerPair(sents []string, p *regexp.Regexp) string {
+	for i := 0; i < len(sents); i++ {
+		if p.MatchString(sents[i]) {
+			return sents[i]
+		}
+		if i+1 < len(sents) && p.MatchString(sents[i]+"。"+sents[i+1]) {
+			return sents[i]
+		}
+	}
+	return ""
+}
 
 // Extract 从一批事件提取候选（启发式；quota 限制防爆量）
 func Extract(events []Event) []*inbox.Candidate {
@@ -84,15 +140,12 @@ func Extract(events []Event) []*inbox.Candidate {
 			if r := []rune(text); len(r) < 4 || len(r) > 500 {
 				continue
 			}
-			mtype := ""
-			switch {
-			case userProcedural.MatchString(text):
-				mtype = store.TypeProcedural
-			case userDirective.MatchString(text):
-				mtype = store.TypePreference
-			}
-			if mtype != "" {
-				add(makeCandidate(mtype, normalizeDirective(text), ev, store.TrustUnverified))
+			// 正文=触发句：先按类型优先级找首条命中的句子（procedural 强于 preference）；
+			// 指令检索先过回忆形态否决（「我记得…」是叙述）
+			if s := triggerSentence(text, nil, userProcedural); s != "" {
+				add(makeCandidate(store.TypeProcedural, normalizeDirective(s), ev, store.TrustUnverified))
+			} else if s := triggerSentence(text, userRecallVeto, userDirective); s != "" {
+				add(makeCandidate(store.TypePreference, normalizeDirective(s), ev, store.TrustUnverified))
 			}
 		case "assistant":
 			if ev.IsToolUse {
@@ -102,11 +155,11 @@ func Extract(events []Event) []*inbox.Candidate {
 			if r := []rune(text); len(r) > 600 {
 				continue
 			}
-			switch {
-			case assistantDecision.MatchString(text):
-				add(makeCandidate(store.TypeDecision, firstSentence(text), ev, store.TrustUnverified))
-			case assistantLesson.MatchString(text):
-				add(makeCandidate(store.TypeProcedural, firstSentence(text), ev, store.TrustUnverified))
+			sents := splitSentences(text)
+			if s := triggerPair(sents, assistantDecision); s != "" {
+				add(makeCandidate(store.TypeDecision, normalizeDirective(s), ev, store.TrustUnverified))
+			} else if s := triggerSentence(text, nil, assistantLesson); s != "" {
+				add(makeCandidate(store.TypeProcedural, normalizeDirective(s), ev, store.TrustUnverified))
 			}
 		}
 	}

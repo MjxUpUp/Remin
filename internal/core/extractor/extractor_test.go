@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/remin-dev/remin/internal/core/inbox"
 	"github.com/remin-dev/remin/internal/store"
 )
 
@@ -104,5 +105,213 @@ func TestDeepOriginOfFollowsEventOrigin(t *testing.T) {
 	}
 	if got := deepOriginOf(Event{}); got != "claude-code·deep" {
 		t.Errorf("空回退: %s", got)
+	}
+}
+
+// ── 启发式精度修正（真实库 61 条诊断：触发词为日常用语 + 正文取首句与触发点脱节）──
+
+// TestBodyIsTriggerSentenceNotFirst 正文 = 触发句而非消息第一句
+// （真实案例：首句是状态播报「claude 侧撞上额度」，触发词「教训」在消息后半段）
+func TestBodyIsTriggerSentenceNotFirst(t *testing.T) {
+	text := "单测 31 包全绿、lint 零残留。\n另外这条方法论教训要记下来：textPayload 空结果不等于没有这条日志。"
+	cands := Extract([]Event{{Role: "assistant", Text: text, SessionID: "s1"}})
+	var lesson *inbox.Candidate
+	for _, c := range cands {
+		if c.Type == store.TypeProcedural && c.Expires == "" {
+			lesson = c
+		}
+	}
+	if lesson == nil {
+		t.Fatal("真教训句应被捕获")
+	}
+	if !strings.Contains(lesson.Body, "textPayload") {
+		t.Fatalf("正文应为触发句而非首句: %q", lesson.Body)
+	}
+	if strings.Contains(lesson.Body, "31 包全绿") {
+		t.Fatalf("状态播报首句不得成为正文: %q", lesson.Body)
+	}
+}
+
+// TestRecallFormsOfJideNotDirective 「我记得/不记得」是回忆不是指令（真实误触主因，记得×11）
+func TestRecallFormsOfJideNotDirective(t *testing.T) {
+	cands := Extract([]Event{{Role: "user", Text: "skills 的改动我记得我之前的做法都是合并到上游 master 的，你检查下", SessionID: "s1"}})
+	for _, c := range cands {
+		if c.Type == store.TypePreference {
+			t.Fatalf("回忆形态的「记得」不应产 preference: %q", c.Body)
+		}
+	}
+}
+
+// TestBareYihouTemporalNotDirective 「以后」单独出现是时间用法（以后再说/以后的版本）
+func TestBareYihouTemporalNotDirective(t *testing.T) {
+	cands := Extract([]Event{{Role: "user", Text: "这个功能以后再说，先把当前 bug 修完", SessionID: "s1"}})
+	for _, c := range cands {
+		if c.Type == store.TypePreference {
+			t.Fatalf("时间用法的「以后」不应产 preference: %q", c.Body)
+		}
+	}
+	cands = Extract([]Event{{Role: "user", Text: "以后的版本再支持，本次先不做", SessionID: "s1"}})
+	for _, c := range cands {
+		if c.Type == store.TypePreference {
+			t.Fatalf("「以后的版本」不应产 preference: %q", c.Body)
+		}
+	}
+}
+
+// TestDirectiveYihouStillCaptured 指令形态的「以后要」仍捕获
+func TestDirectiveYihouStillCaptured(t *testing.T) {
+	cands := Extract([]Event{{Role: "user", Text: "以后要发布前都先看 runbook，别直接上", SessionID: "s1"}})
+	var pref *inbox.Candidate
+	for _, c := range cands {
+		if c.Type == store.TypePreference {
+			pref = c
+		}
+	}
+	if pref == nil {
+		t.Fatal("指令形态「以后要」应产 preference")
+	}
+	if !strings.Contains(pref.Body, "以后要") {
+		t.Fatalf("正文应含触发句: %q", pref.Body)
+	}
+}
+
+// TestBareJiaoxunNarrationNotLesson 行文中随口提到「教训」不是教训总结（教训×25 主因）
+func TestBareJiaoxunNarrationNotLesson(t *testing.T) {
+	cases := []string{
+		"claude 侧撞上会话额度，codex 全天满载。先把状态与教训落盘。",
+		"你上次指出证据不足，那条教训这次不用再犯。",
+	}
+	for _, text := range cases {
+		cands := Extract([]Event{{Role: "assistant", Text: text, SessionID: "s1"}})
+		for _, c := range cands {
+			if c.Type == store.TypeProcedural && c.Expires == "" {
+				t.Fatalf("行文随口的「教训」不应产教训候选: %q", c.Body)
+			}
+		}
+	}
+}
+
+// TestFramedJiaoxunStillCaptured 总结形态的教训仍捕获
+func TestFramedJiaoxunStillCaptured(t *testing.T) {
+	text := "这条教训是要记住的：质疑例子不等于质疑机理。"
+	cands := Extract([]Event{{Role: "assistant", Text: text, SessionID: "s1"}})
+	var lesson *inbox.Candidate
+	for _, c := range cands {
+		if c.Type == store.TypeProcedural && c.Expires == "" {
+			lesson = c
+		}
+	}
+	if lesson == nil {
+		t.Fatal("总结形态的教训应被捕获")
+	}
+	if !strings.Contains(lesson.Body, "质疑例子") {
+		t.Fatalf("正文应为触发句: %q", lesson.Body)
+	}
+}
+
+// TestEnglishRootCauseNarrationKilled "Confirming the root cause" 是排查叙述不是教训
+func TestEnglishRootCauseNarrationKilled(t *testing.T) {
+	cands := Extract([]Event{{Role: "assistant", Text: "Scenario 14 found a real one. Confirming the root cause: the merge silently duplicated blocks.", SessionID: "s1"}})
+	for _, c := range cands {
+		if c.Type == store.TypeProcedural && c.Expires == "" {
+			t.Fatalf("root cause 叙述不应产教训: %q", c.Body)
+		}
+	}
+}
+
+// TestRecallVetoNotKillAll 「记得」保留但回忆形态否决：指令形态的记得+动词仍捕获
+// （审查过杀修正：repo 自有 fixture「记得部署前先看 runbook」曾被误杀）
+func TestRecallVetoNotKillAll(t *testing.T) {
+	for _, text := range []string{
+		"记得关闭终端",
+		"记得部署前先看 runbook",
+		"记得所有验证都要走 make constitution",
+	} {
+		cands := Extract([]Event{{Role: "user", Text: text, SessionID: "s1"}})
+		var pref *inbox.Candidate
+		for _, c := range cands {
+			if c.Type == store.TypePreference {
+				pref = c
+			}
+		}
+		if pref == nil {
+			t.Errorf("指令形态「记得」应产 preference: %q", text)
+		}
+	}
+	// 回忆形态仍否决
+	for _, text := range []string{"我记得之前的做法都是合并上游", "还记得上次那个方案吗"} {
+		for _, c := range Extract([]Event{{Role: "user", Text: text, SessionID: "s1"}}) {
+			if c.Type == store.TypePreference {
+				t.Errorf("回忆形态应否决: %q → %q", text, c.Body)
+			}
+		}
+	}
+}
+
+// TestIntervalYihouShape 间隔形态「以后+X+都/要」捕获（「以后回复都用中文」曾被误杀）
+func TestIntervalYihouShape(t *testing.T) {
+	cands := Extract([]Event{{Role: "user", Text: "以后回复都用中文", SessionID: "s1"}})
+	var pref *inbox.Candidate
+	for _, c := range cands {
+		if c.Type == store.TypePreference {
+			pref = c
+		}
+	}
+	if pref == nil {
+		t.Fatal("间隔形态「以后回复都用中文」应产 preference")
+	}
+	if !strings.Contains(pref.Body, "中文") {
+		t.Fatalf("正文应为触发句: %q", pref.Body)
+	}
+}
+
+// TestBieWangLeKeepsProceduralType 「别忘了」类型保持 procedural（v0 行为）
+func TestBieWangLeKeepsProceduralType(t *testing.T) {
+	cands := Extract([]Event{{Role: "user", Text: "别忘了提交前跑 make test", SessionID: "s1"}})
+	var proc *inbox.Candidate
+	for _, c := range cands {
+		if c.Type == store.TypeProcedural {
+			proc = c
+		}
+	}
+	if proc == nil {
+		t.Fatal("「别忘了」应产 procedural（v0 类型行为）")
+	}
+}
+
+// TestDecisionSpanningSentences 决策表达跨句（「我们决定选 A。原因是 X。」）
+// ——句级化后需句对窗口，否则误杀（审查发现 3）
+func TestDecisionSpanningSentences(t *testing.T) {
+	text := "方案定了。我们决定选 Postgres。原因是事务一致性是硬需求。"
+	cands := Extract([]Event{{Role: "assistant", Text: text, SessionID: "s1"}})
+	var dec *inbox.Candidate
+	for _, c := range cands {
+		if c.Type == store.TypeDecision {
+			dec = c
+		}
+	}
+	if dec == nil {
+		t.Fatal("跨句决策表达应捕获")
+	}
+	if !strings.Contains(dec.Body, "Postgres") {
+		t.Fatalf("正文应为决策起始句: %q", dec.Body)
+	}
+}
+
+// TestUserTriggerInSecondSentence 用户分支正文=触发句（此前只在 assistant 分支测过）
+func TestUserTriggerInSecondSentence(t *testing.T) {
+	text := "先看下现在的报错。\n记住：构建统一走 pnpm，别用 npm。"
+	cands := Extract([]Event{{Role: "user", Text: text, SessionID: "s1"}})
+	var pref *inbox.Candidate
+	for _, c := range cands {
+		if c.Type == store.TypePreference {
+			pref = c
+		}
+	}
+	if pref == nil {
+		t.Fatal("第二句指令应捕获")
+	}
+	if !strings.Contains(pref.Body, "pnpm") || strings.Contains(pref.Body, "报错") {
+		t.Fatalf("正文应为触发句: %q", pref.Body)
 	}
 }

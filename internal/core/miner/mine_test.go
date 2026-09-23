@@ -99,6 +99,21 @@ func TestIncrementalCursor(t *testing.T) {
 	if rep1.Candidates == 0 {
 		t.Fatal("首轮应挖出候选")
 	}
+	// typed 候选独立断言（审查发现：仅看总数时 recap 会掩护指令候选的召回损失——
+	// 「以后回复都用中文」必须作为 preference 被捕获，不能只剩 recap 计数）
+	{
+		in := inbox.New(st)
+		cands, _ := in.ListCandidates(rep1.Batch)
+		var typed int
+		for _, c := range cands {
+			if c.Expires == "" && c.Type == store.TypePreference {
+				typed++
+			}
+		}
+		if typed != 1 {
+			t.Fatalf("typed preference 候选应为 1（召回损失不得被 recap 掩护）: %d", typed)
+		}
+	}
 	// 无变化 → 零产出
 	rep2, _ := Mine(context.Background(), st, cfg, Options{ClaudeDir: dir})
 	if rep2.Candidates != 0 {
