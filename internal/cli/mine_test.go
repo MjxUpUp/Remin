@@ -11,6 +11,7 @@ import (
 
 // --deep 未配置 llm 节时显式报错（CLI flag 接线层；用户显式要求过深路径，不静默降级）
 func TestMineDeepFlagFailsFastWithoutLLMConfig(t *testing.T) {
+	t.Setenv("REMIN_DEEP_ENGINE", "llm") // 钉 llm 引擎：防本机真 agent 在场绕过未配置断言
 	st := testutil.NewStore(t)
 	rootCmd.SetArgs([]string{"mine", "--deep", "--root", st.Root})
 	errText := captureStderr(t, func() {

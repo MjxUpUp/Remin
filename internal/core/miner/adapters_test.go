@@ -240,6 +240,7 @@ func TestMineDiscoversAllRoots(t *testing.T) {
 
 // TestTickDeepOriginFollowsSource 深挖候选 origin 随源（codex·deep）
 func TestTickDeepOriginFollowsSource(t *testing.T) {
+	stubNoDeepAgents(t)
 	st := testutil.NewStore(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rollout-b.jsonl")

@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **agent headless 深提取引擎（第一优先级）**：探测本机已认证的 agent CLI（claude -p / codex exec
+  一次性会话，prompt 走 stdin）作为深度提取引擎——数据不产生新的外流面（transcript 本就是该
+  agent 产的）、复用已有订阅额度（企业内合规与额度焦虑友好）；手动 llm 端点降为第二选择。
+  两种引擎共用同一系统约束、解析与 **quote 逐字溯源守卫**（守卫引擎无关——agent 的输出同样
+  必须逐字溯源到源事件，编造即拒收）；prompt 长文本走 stdin（超 argv 上限）；单次会话 3 分钟
+  硬预算。`remin mine --deep` 与闲时 tick 排空均按此序自动解析；`REMIN_DEEP_ENGINE=llm|agent`
+  可钉扎引擎（跳过探测，演练/测试确定性）。**零配置即用**：本机装了 claude 或 codex 并登录，
+  `--deep` 直接可用。
+
 ### 修复
 
 - **启发式提取精度**（真实库 61 条候选诊断驱动）：正文改取**触发句**而非消息首句

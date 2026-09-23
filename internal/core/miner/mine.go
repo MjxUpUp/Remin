@@ -1,8 +1,10 @@
 package miner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +38,26 @@ type Options struct {
 	SinceDays  int      // 首挖限量：仅挖 mtime 近 N 天的 transcript（0=不限；发现路径专用——queue/force 不受限）
 }
 
+// isDeepEcho 文件是否为深提取会话回声（含哨兵标记；64KB 内探测——prompt 在会话头部）
+func isDeepEcho(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, 64*1024)
+	n, _ := io.ReadFull(f, buf)
+	return bytes.Contains(buf[:n], []byte(extractor.DeepEchoSentinel))
+}
+
+// cfgLLMOf nil 安全取 cfg.LLM
+func cfgLLMOf(cfg *config.Config) *config.LLMConfig {
+	if cfg == nil {
+		return nil
+	}
+	return cfg.LLM
+}
+
 // Report 挖矿报告
 type Report struct {
 	Transcripts  int      `json:"transcripts"`
@@ -53,11 +75,11 @@ type Report struct {
 // （promotion 自带互斥，避免嵌套自锁）。
 func Mine(ctx context.Context, st *store.Store, cfg *config.Config, opts Options) (*Report, error) {
 	rep := &Report{}
-	// --deep 配置不全即失败前置（锁外快速失败，用户显式要求过深路径，不静默降级）。
-	// 缺密钥也在此拦：否则逐 transcript 弃权只进 Note，游标照常推进——
-	// 该增量的深提取机会永久丢失（评审 P2：静态可检测的配置错误不允许静默降级）
-	if opts.Deep && (cfg == nil || cfg.LLM == nil || cfg.LLM.Endpoint == "" || cfg.LLM.APIKey == "") {
-		return nil, fmt.Errorf("--deep 需要 config.yaml 配置 llm 节且设置 REMIN_LLM_API_KEY（密钥只走环境变量，不落 git 真源）")
+	// --deep 无可用引擎即失败前置（锁外快速失败，用户显式要求过深路径，不静默降级）。
+	// 引擎解析序（用户定义）：本机 agent headless 第一优先级（数据不产生新外流面、
+	// 复用已有订阅额度），手动 llm 端点第二。静态不可用不允许静默降级（评审 P2 同判）。
+	if opts.Deep && extractor.ResolveDeepEngine(cfgLLMOf(cfg)).Kind == extractor.DeepEngineNone {
+		return nil, fmt.Errorf("--deep 需要本机 agent CLI（claude/codex 已装并登录）或 config.yaml 配 llm 节且设 REMIN_LLM_API_KEY——其一即可")
 	}
 	mine := func() error {
 		r, err := mineLocked(ctx, st, cfg, opts)
@@ -160,6 +182,11 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 		if err != nil {
 			continue
 		}
+		// 提取会话回灌跳过：agent 深提取的一次性会话日志含哨兵标记与源文本回声，
+		// 落在发现根内会被再次挖到——整文件跳过防无限回灌
+		if isDeepEcho(path) {
+			continue
+		}
 		if !cutoff.IsZero() && info.ModTime().Before(cutoff) {
 			rep.SkippedOld++
 			continue // 老历史跳过（--full-history / --force 显式全量）
@@ -181,8 +208,8 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 			cands := extractor.Extract(events)
 			// 深路径（增量召回）：快速路径结果永远保留，深路径只补不替；
 			// 单 transcript 失败即弃权（Note 披露），不拖垮整批。
-			if opts.Deep && cfg != nil && cfg.LLM != nil {
-				deep, derr := extractor.ExtractDeep(ctx, cfg.LLM, events)
+			if opts.Deep {
+				deep, derr := extractor.ExtractDeepAuto(ctx, cfgLLMOf(cfg), events)
 				if derr != nil {
 					rep.Note = strings.TrimSpace(strings.TrimSpace(rep.Note) + " 深度提取弃权（" + firstLine(derr.Error()) + "）")
 				} else {
@@ -206,7 +233,7 @@ func mineLocked(ctx context.Context, st *store.Store, cfg *config.Config, opts O
 		// 增量深挖不断点前的待挖段，防未深挖段被静默丢弃）
 		if !opts.DryRun {
 			dq := LoadDeepQueue(st.Root)
-			if len(events) > 0 && !opts.Deep && cfg != nil && cfg.LLM != nil && cfg.LLM.Endpoint != "" {
+			if len(events) > 0 && !opts.Deep && extractor.DeepEngineAvailable(cfgLLMOf(cfg)) {
 				_ = dq.RemoveCovered(path, fromLine, lines) // 旧段被新段完全覆盖时去重（force 重挖防双重计费）
 				_ = dq.Append(path, fromLine, lines)
 			}

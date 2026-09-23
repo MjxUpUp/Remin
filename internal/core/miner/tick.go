@@ -111,8 +111,10 @@ func drainDeep(ctx context.Context, st *store.Store, cfg *config.Config, opts Ti
 	if len(items) == 0 {
 		return
 	}
-	if cfg == nil || cfg.LLM == nil || cfg.LLM.Endpoint == "" || cfg.LLM.APIKey == "" {
-		rep.Note = fmt.Sprintf("deep 待挖 %d 段保留：未配置 llm 端点或未设 REMIN_LLM_API_KEY", len(items))
+	// 排空门用严格解析（agent 或 端点+密钥）：端点没密钥时保留队列——密钥可以
+	// 在挂账之后才出现（export 时序合法），等下一次 tick
+	if extractor.ResolveDeepEngine(cfgLLMOf(cfg)).Kind == extractor.DeepEngineNone {
+		rep.Note = fmt.Sprintf("deep 待挖 %d 段保留：无可用深提取引擎（agent CLI 已装并登录，或 llm 端点+REMIN_LLM_API_KEY）", len(items))
 		return
 	}
 	max := opts.DeepMax
@@ -150,7 +152,7 @@ func drainDeep(ctx context.Context, st *store.Store, cfg *config.Config, opts Ti
 			continue // 空段（行号漂移/纯工具行）：如实计完成，不占预算
 		}
 		worked++
-		deep, derr := extractor.ExtractDeep(ctx, cfg.LLM, bounded)
+		deep, derr := extractor.ExtractDeepAuto(ctx, cfgLLMOf(cfg), bounded)
 		if derr != nil {
 			done[key] = true
 			abstained++
@@ -171,7 +173,7 @@ func drainDeep(ctx context.Context, st *store.Store, cfg *config.Config, opts Ti
 		if vanished > 0 {
 			rep.Note = strings.TrimSpace(fmt.Sprintf("失效段 %d（transcript 已不可读，出队）", vanished) + " " + rep.Note)
 		}
-		rep.Note = strings.TrimSpace(strings.TrimSpace(rep.Note) + fmt.Sprintf(" 深挖弃权 %d 段（端点失败，不重试）", abstained))
+		rep.Note = strings.TrimSpace(strings.TrimSpace(rep.Note) + fmt.Sprintf(" 深挖弃权 %d 段（引擎调用失败，不重试）", abstained))
 	}
 	// 候选先落 inbox：成功段出队挂在落批次之后（失败则保留段下次重挖，不静默丢候选）
 	if len(deepCands) > 0 {
