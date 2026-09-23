@@ -315,3 +315,25 @@ func TestTickDeepSuppressesExistingBodies(t *testing.T) {
 		t.Fatalf("与快挖候选同 body 的深挖候选应抑制: %+v", rep)
 	}
 }
+
+// TestTickPersistsLastReport tick 留档（webui 深挖徽章数据面）：跑一次 tick 后可读回，
+// 未跑过时 LoadTickLast 返回 nil（徽章降级为只显待挖数）
+func TestTickPersistsLastReport(t *testing.T) {
+	st := testutil.NewStore(t)
+	if LoadTickLast(st.Root) != nil {
+		t.Fatal("未跑过 tick 应无留档")
+	}
+	dir := t.TempDir()
+	writeTranscript(t, transcript(dir, sessID+".jsonl"), deepFixture)
+	rep, err := Tick(context.Background(), st, config.Default(), TickOptions{ClaudeDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := LoadTickLast(st.Root)
+	if last == nil || last.Rep == nil {
+		t.Fatal("tick 后应留档")
+	}
+	if last.TS == "" || last.Rep.Mine == nil || last.Rep.Mine.Candidates != rep.Mine.Candidates {
+		t.Fatalf("留档内容失真: %+v", last)
+	}
+}

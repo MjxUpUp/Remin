@@ -4,8 +4,12 @@ package miner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/remin-dev/remin/internal/core/config"
 	"github.com/remin-dev/remin/internal/core/extractor"
@@ -52,12 +56,49 @@ func Tick(ctx context.Context, st *store.Store, cfg *config.Config, opts TickOpt
 
 	err = store.WithRoot(st.Root, func() error {
 		drainDeep(ctx, st, cfg, opts, rep)
+		saveTickLast(st.Root, rep)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return rep, nil
+}
+
+// TickLast 上次 tick 的留档（transcripts-cache/tick-last.json，可弃缓存）——
+// webui 深挖待办徽章的明细数据面（待挖/完成/弃权 + 时间）
+type TickLast struct {
+	TS  string      `json:"ts"`
+	Rep *TickReport `json:"report"`
+}
+
+func tickLastPath(root string) string {
+	return filepath.Join(root, "transcripts-cache", "tick-last.json")
+}
+
+func saveTickLast(root string, rep *TickReport) {
+	data, err := json.Marshal(TickLast{TS: time.Now().Format("2006-01-02T15:04:05-07:00"), Rep: rep})
+	if err != nil {
+		return
+	}
+	p := tickLastPath(root)
+	tmp := p + ".tmp"
+	if os.WriteFile(tmp, data, 0o644) == nil {
+		_ = os.Rename(tmp, p) // 原子换入：并发读者不会拿到半截文件
+	}
+}
+
+// LoadTickLast 读上次 tick 留档（无则 nil——徽章降级为只显待挖数）
+func LoadTickLast(root string) *TickLast {
+	data, err := os.ReadFile(tickLastPath(root))
+	if err != nil {
+		return nil
+	}
+	var t TickLast
+	if json.Unmarshal(data, &t) != nil {
+		return nil
+	}
+	return &t
 }
 
 // drainDeep 排空 deep 待挖队列（调用方须持 WithRoot 锁）。

@@ -5,128 +5,518 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Remin 审收</title>
 <style>
-  :root { color-scheme: light; }
+  /* === 设计令牌（亮）——D3：全量变量化，暗色整套切换，默认跟随系统 === */
+  :root {
+    color-scheme: light dark;
+    --canvas: #f6f7f9; --surface: #ffffff; --surface-2: #f6f8fa; --surface-3: #eaeef2;
+    --border: #e4e7eb; --text: #1f2328; --text-2: #57606a; --text-3: #6b7280;
+    --accent: #0969da; --accent-bg: #f0f6ff;
+    --ok: #1a7f37; --warn-fg: #9a6700; --warn-bg: #fff8c5; --err: #cf222e;
+    --btn-primary: #1f883d; --shadow: 0 4px 12px rgba(0,0,0,.08);
+    --t-uv-fg: #9a6700; --t-uv-bg: #fff8c5; --t-hv-fg: #1a7f37; --t-hv-bg: #dafbe1; --t-ac-fg: #0550ae; --t-ac-bg: #ddf4ff;
+    --ty-preference: #bf8700; --ty-procedural: #0969da; --ty-decision: #8250df;
+    --ty-semantic: #0598bc; --ty-episodic: #6e7781; --ty-spatial: #956c00;
+  }
+  [data-theme=dark] {
+    --canvas: #0d1117; --surface: #161b22; --surface-2: #21262d; --surface-3: #30363d;
+    --border: #30363d; --text: #e6edf3; --text-2: #8b949e; --text-3: #8b949e;
+    --accent: #4493f8; --accent-bg: #121d2f;
+    --ok: #3fb950; --warn-fg: #d29922; --warn-bg: #3d2e00; --err: #f85149;
+    --shadow: 0 4px 12px rgba(0,0,0,.4);
+    --t-uv-fg: #d29922; --t-uv-bg: #3d2e00; --t-hv-fg: #3fb950; --t-hv-bg: #0f2e1a; --t-ac-fg: #58a6ff; --t-ac-bg: #0c2d6b;
+    --ty-preference: #e3b341; --ty-procedural: #58a6ff; --ty-decision: #ab7df8;
+    --ty-semantic: #39c5cf; --ty-episodic: #9ea7b3; --ty-spatial: #d4a72c;
+  }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f6f7f9; color: #1f2328; }
-  header { background: #fff; border-bottom: 1px solid #e4e7eb; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  header h1 { font-size: 16px; margin: 0; }
-  header .meta { color: #6b7280; font-size: 12px; }
-  header input[type=search] { flex: 1; min-width: 220px; padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px; }
-  main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px 20px; max-width: 1200px; margin: 0 auto; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
-  .card { background: #fff; border: 1px solid #e4e7eb; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
-  .card h2 { font-size: 13px; margin: 0 0 10px; color: #57606a; }
-  .batch { padding: 10px; border: 1px solid #e4e7eb; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
-  .batch:hover, .batch.sel { border-color: #0969da; background: #f0f6ff; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: var(--canvas); color: var(--text); }
+  button { font-family: inherit; }
+
+  /* === A2 顶部状态带 === */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; position: sticky; top: 0; z-index: 20; }
+  header h1 { font-size: 15px; margin: 0 6px 0 0; }
+  .badge { background: var(--surface-3); border-radius: 4px; padding: 1px 7px; font-size: 11px; color: var(--text-2); cursor: default; white-space: nowrap; }
+  .badge.click { cursor: pointer; }
+  .badge.deep { color: var(--warn-fg); background: var(--warn-bg); position: relative; }
+  .badge.deep.alert { color: var(--err); }
+  .badge.deep .tip { display: none; position: absolute; top: 26px; left: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; width: 250px; font-size: 12px; line-height: 1.6; box-shadow: var(--shadow); z-index: 30; color: var(--text-2); }
+  .badge.deep:hover .tip { display: block; }
+  header .grow { flex: 1; }
+  header input[type=search] { flex: 2; min-width: 200px; max-width: 460px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: var(--surface); color: var(--text); }
+  .kbd { font-family: ui-monospace, monospace; font-size: 11px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface-2); color: var(--text-2); }
+  #themeBtn { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 13px; color: var(--text-2); }
+
+  /* === A1 三栏工作台 === */
+  main { display: grid; grid-template-columns: 300px minmax(0,1fr) 320px; gap: 14px; padding: 14px 20px; max-width: 1400px; margin: 0 auto; align-items: start; }
+  .col { min-width: 0; }
+  #ctxCol { position: sticky; top: 62px; }
+  @media (max-width: 1100px) {
+    main { grid-template-columns: 250px minmax(0,1fr); }
+    #ctxCol { display: none; }
+    body.ctx-open #ctxCol { display: block; position: fixed; top: 0; right: 0; bottom: 0; width: 340px; background: var(--canvas); padding: 14px; overflow-y: auto; z-index: 40; box-shadow: var(--shadow); }
+    body.ctx-open #ctxBackdrop { display: block; }
+  }
+  #ctxBackdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 35; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 13px; margin-bottom: 13px; }
+  .card h2 { font-size: 13px; margin: 0 0 9px; color: var(--text-2); font-weight: 600; }
+
+  /* 批次列表 */
+  .batch { padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 7px; cursor: pointer; background: var(--surface); }
+  .batch:hover, .batch.sel { border-color: var(--accent); background: var(--accent-bg); }
   .batch .id { font-family: ui-monospace, monospace; font-size: 12px; }
-  .batch .types { color: #6b7280; font-size: 12px; margin-top: 4px; }
-    .cand { border: 1px solid #e4e7eb; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
-  .cand .head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #57606a; flex-wrap: wrap; }
-  .cand .body { margin: 6px 0; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-  .cand .prov { font-size: 12px; color: #6b7280; }
-  .tag { background: #eaeef2; border-radius: 4px; padding: 1px 6px; }
-  .trust-unverified { color: #9a6700; background: #fff8c5; }
-  .trust-human-verified { color: #1a7f37; background: #dafbe1; }
-  .trust-agent-claimed { color: #0550ae; background: #ddf4ff; }
-  button { font-size: 13px; padding: 5px 12px; border-radius: 6px; border: 1px solid #d0d7de; background: #f6f8fa; cursor: pointer; }
-  button.primary { background: #1f883d; border-color: #1f883d; color: #fff; }
-  button.danger { background: #fff; color: #cf222e; border-color: #d0d7de; }
-  button:disabled { opacity: .5; cursor: default; }
-  .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .hint { color: #6b7280; font-size: 12px; margin-top: 4px; }
-  .hit { border-left: 3px solid #0969da; padding: 6px 10px; margin-bottom: 6px; background: #fff; }
-  .abstain { color: #9a6700; padding: 8px; background: #fff8c5; border-radius: 6px; }
-  #toast { position: fixed; bottom: 16px; right: 16px; background: #1f2328; color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; display: none; }
+  .batch .types { color: var(--text-3); font-size: 12px; margin-top: 3px; }
+  .typebar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; margin-top: 6px; background: var(--surface-3); }
+  .typebar i { display: block; height: 100%; }
+  .done-hint { color: var(--text-3); font-size: 12px; margin-top: 6px; }
+
+  /* === B1 候选卡片 === */
+  .cand { border: 1px solid var(--border); border-radius: 6px; padding: 10px 10px 10px 13px; margin-bottom: 8px; background: var(--surface); position: relative; }
+  .cand .lbar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 6px 0 0 6px; }
+  .cand .head { display: flex; gap: 7px; align-items: center; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+  .cand .body { margin: 7px 0 4px; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .cand .body.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .cand .more { font-size: 12px; color: var(--accent); cursor: pointer; user-select: none; width: fit-content; }
+  .cand .prov { font-size: 12px; color: var(--text-3); display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+  .cand .quote-btn { cursor: pointer; color: var(--text-3); white-space: nowrap; }
+  .cand .quote-btn:hover { color: var(--accent); }
+  .cand .quote { display: none; margin-top: 5px; padding: 6px 8px; background: var(--surface-2); border-left: 3px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--text-2); }
+  .cand .quote.open { display: block; }
+  .cand .actions { display: flex; gap: 8px; margin-top: 7px; }
+  .cand .pos { position: absolute; right: 10px; top: 8px; font-size: 11px; font-family: ui-monospace, monospace; color: var(--accent); }
+  .cand.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .cand.handled { opacity: .45; }
+  .cand.handled .actions { display: none; }
+
+  .tag { background: var(--surface-3); border-radius: 4px; padding: 1px 6px; font-size: 11px; color: var(--text-2); }
+  .trust-unverified { color: var(--t-uv-fg); background: var(--t-uv-bg); }
+  .trust-human-verified { color: var(--t-hv-fg); background: var(--t-hv-bg); }
+  .trust-agent-claimed { color: var(--t-ac-fg); background: var(--t-ac-bg); }
+  button.act { font-size: 13px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; color: var(--text); }
+  button.act.primary { background: var(--btn-primary); border-color: var(--btn-primary); color: #fff; }
+  button.act.danger { background: var(--surface); color: var(--err); }
+
+  /* === B3 动作条与拒绝确认 === */
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .bar select { font-size: 13px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px 0 0 6px; background: var(--surface-2); color: var(--text); }
+  .bar .pair button.adopt-type { border-radius: 0 6px 6px 0; }
+  .confirm-box { background: var(--surface); border: 1px solid var(--err); border-radius: 8px; padding: 12px; margin-bottom: 10px; font-size: 13px; }
+  .confirm-box .sub { font-size: 12px; color: var(--text-3); }
+
+  /* === C1 检索 === */
+  .hit { border: 1px solid var(--border); border-left: 4px solid var(--t-hv-fg); border-radius: 6px; padding: 7px 10px; margin-bottom: 7px; background: var(--surface); position: relative; }
+  .hit .id { font-family: ui-monospace, monospace; font-size: 12px; }
+  .hit .body { font-size: 13px; margin-top: 3px; }
+  .hit .detail { position: absolute; right: 8px; top: 6px; font-size: 12px; color: var(--accent); cursor: pointer; }
+  .abstain { color: var(--warn-fg); padding: 9px 10px; background: var(--warn-bg); border-radius: 6px; font-size: 13px; line-height: 1.7; }
+  .abstain .sug { font-size: 12px; }
+  .abstain.none { background: var(--surface-2); color: var(--text-3); }
+
+  /* === A1/D1 上下文栏 === */
+  .ctx-sec { font-size: 12px; color: var(--text-2); line-height: 1.7; }
+  .ctx-sec b { color: var(--text); font-size: 13px; }
+  .ctx-quote { margin-top: 5px; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; font-size: 12px; color: var(--text-2); }
+  .spark { display: flex; align-items: flex-end; gap: 6px; height: 64px; padding: 8px 6px 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin-top: 8px; overflow-x: auto; }
+  .spark .colwrap { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+  .spark .bar2 { width: 20px; background: var(--btn-primary); border-radius: 2px 2px 0 0; position: relative; }
+  .spark .bar2.warn { background: var(--warn-fg); }
+  .spark .flag { position: absolute; top: -13px; right: -3px; font-size: 10px; color: var(--err); font-style: normal; }
+  .spark-empty { border: 1px dashed var(--border); border-radius: 6px; padding: 13px; font-size: 12px; color: var(--text-3); text-align: center; margin-top: 8px; line-height: 1.8; }
+  .spark-delta { font-size: 11px; color: var(--text-3); font-family: ui-monospace, monospace; margin-top: 5px; }
+
+  /* === C2 详情抽屉 === */
+  #drawer { display: none; position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--border); box-shadow: var(--shadow); z-index: 60; overflow-y: auto; padding: 18px; font-size: 13px; }
+  #drawer.open { display: block; }
+  #drawer .close { position: absolute; top: 10px; right: 14px; cursor: pointer; color: var(--text-3); font-size: 16px; }
+  #drawer h3 { font-family: ui-monospace, monospace; font-size: 13px; margin: 0 0 8px; padding-right: 24px; word-break: break-all; }
+  #drawer .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  #drawer .body { padding: 9px; background: var(--surface-2); border-radius: 6px; white-space: pre-wrap; word-break: break-word; }
+  #drawer h4 { font-size: 12px; color: var(--text-2); margin: 14px 0 5px; }
+  #drawer .quote { padding: 6px 8px; background: var(--surface-2); border-radius: 4px; font-size: 12px; color: var(--text-2); }
+  #drawer .chain { font-size: 12px; line-height: 1.9; }
+  #drawer .chain .old { color: var(--text-3); text-decoration: line-through; }
+  #drawer .chain .cur { color: var(--text); font-weight: 600; }
+  #drawer .chain .arrow { color: var(--accent); }
+  #drawer .meta { color: var(--text-2); line-height: 1.8; }
+  #drawerBack { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 55; }
+  #drawerBack.open { display: block; }
+
+  /* B2 帮助浮层 */
+  #help { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 70; }
+  #help.open { display: flex; align-items: center; justify-content: center; }
+  #help .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 22px; font-size: 13px; line-height: 2.2; box-shadow: var(--shadow); }
+  .hint { color: var(--text-3); font-size: 12px; margin-top: 4px; line-height: 1.7; }
+  #toast { position: fixed; bottom: 16px; right: 16px; background: var(--text); color: var(--canvas); padding: 9px 14px; border-radius: 8px; font-size: 13px; display: none; max-width: 70vw; z-index: 80; }
+  #toast.err { background: var(--err); color: #fff; }
+  #toast code { font-family: ui-monospace, monospace; }
 </style>
 </head>
 <body>
 <header>
   <h1>Remin 审收</h1>
-  <span class="meta" id="meta">…</span>
+  <span class="badge click" id="rootBadge" title="点击复制真源路径">🏠 …</span>
+  <span class="badge" id="verBadge">索引 …</span>
+  <span class="badge" id="memBadge">记忆 …</span>
+  <span class="badge deep" id="deepBadge" style="display:none"><span id="deepText">⛏ …</span><div class="tip" id="deepTip"></div></span>
+  <span class="grow"></span>
   <input type="search" id="q" placeholder="检索记忆（trust 随行；低置信弃权）">
+  <span class="kbd">/</span>
+  <button id="themeBtn" title="切换亮/暗主题">🌙</button>
 </header>
+<div id="ctxBackdrop"></div>
 <main>
-  <section id="batches"></section>
-  <section id="detail">
-    <div class="card"><h2>批次详情</h2><p class="hint">左侧选择待审批次；采纳=单一原子提交（记忆+supersession+版本+1+审计）。</p></div>
-    <div class="card"><h2>检索</h2><p class="hint">输入查询后回车。</p></div>
+  <section class="col" id="batches"></section>
+  <section class="col" id="detail"></section>
+  <section class="col" id="ctxCol">
+    <div class="card"><h2>上下文</h2><div class="ctx-sec" id="ctxBody"></div></div>
+    <div class="card"><h2>审收趋势</h2><div id="sparkBox"></div></div>
   </section>
 </main>
+<div id="drawerBack"></div>
+<aside id="drawer"></aside>
+<div id="help"><div class="panel">
+  <b>快捷键</b><br/>
+  <span class="kbd">j</span> / <span class="kbd">k</span>　下一个 / 上一个候选<br/>
+  <span class="kbd">a</span>　采纳高亮候选　<span class="kbd">r</span>　拒绝高亮候选<br/>
+  <span class="kbd">/</span>　聚焦搜索　<span class="kbd">⌘/Ctrl+.</span>　窄屏展开上下文栏<br/>
+  <span class="kbd">Esc</span>　关闭浮层　<span class="kbd">?</span>　本帮助
+</div></div>
 <div id="toast"></div>
 <script>
+'use strict';
 const $ = s => document.querySelector(s);
-let currentBatch = null;
-function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background=ok?'#1f883d':'#cf222e'; t.style.display='block'; setTimeout(()=>t.style.display='none', 2600); }
-async function api(path, opts){ const r = await fetch(path, opts); const j = await r.json(); if(!j.ok) throw new Error(j.error||r.status); return j.data; }
-function fmtTypes(t){ return Object.entries(t||{}).map(([k,v])=>`${k} ${v}`).join(' · ') || '—'; }
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TYPE_COLOR = { preference:'var(--ty-preference)', procedural:'var(--ty-procedural)', decision:'var(--ty-decision)', semantic:'var(--ty-semantic)', episodic:'var(--ty-episodic)', 'spatial-context':'var(--ty-spatial)' };
+const typeColor = t => TYPE_COLOR[t] || 'var(--ty-episodic)';
+
+let state = null;           // /api/state 缓存（A2/D2）
+let currentBatch = null;    // 选中批次 id
+let candidates = [];        // 当前批次候选（_handled/_open/_quote 为本地 UI 态）
+let focusIdx = -1;          // B2 键盘焦点
+let confirmingReject = false; // B3 拒绝确认态
+
+/* ── D3 主题：默认跟随系统，手动切换记忆 localStorage ── */
+(function theme(){
+  const saved = localStorage.getItem('remin-ui-theme');
+  const sys = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+  const apply = dark => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; $('#themeBtn').textContent = dark ? '☀️' : '🌙'; };
+  apply(saved ? saved === 'dark' : (sys ? sys.matches : false));
+  if (sys && sys.addEventListener) sys.addEventListener('change', e => { if (!localStorage.getItem('remin-ui-theme')) apply(e.matches); });
+  $('#themeBtn').onclick = () => {
+    const dark = document.documentElement.dataset.theme !== 'dark';
+    apply(dark); localStorage.setItem('remin-ui-theme', dark ? 'dark' : 'light');
+  };
+})();
+
+function toast(msg, err){
+  const t = $('#toast'); t.classList.toggle('err', !!err);
+  t.innerHTML = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3400);
+}
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j.data;
+}
+function abbrev(p){ return String(p||'').replace(/^\/Users\/[^/]+/, '~'); }
+
+/* ── A2/D2 状态带 ── */
+function renderBadges(){
+  $('#rootBadge').textContent = '🏠 ' + abbrev(state.root);
+  $('#verBadge').textContent = '索引 v' + state.version;
+  $('#memBadge').textContent = '记忆 ' + state.memories;
+  const b = $('#deepBadge'), pending = state.deep_pending || 0;
+  if (pending > 0){
+    b.style.display = '';
+    const tl = state.tick_last, rep = tl && tl.report;
+    const abstained = rep ? (rep.deep_abstained || 0) : 0;
+    b.classList.toggle('alert', abstained > 0);
+    $('#deepText').textContent = '⛏ 深挖待办 ' + pending + ' 段' + (abstained > 0 ? ' · 上轮弃权 ' + abstained : '');
+    $('#deepTip').innerHTML = rep
+      ? '<b>闲时深挖</b><br/>待挖 ' + pending + ' 段 · 上轮完成 ' + (rep.deep_drained || 0) + ' · 弃权 ' + abstained
+        + '<br/><span style="color:var(--text-3)">调度器定期自动 tick；<span style="font-family:ui-monospace,monospace">remin tick</span> 可立即跑</span>'
+      : '<b>闲时深挖</b><br/>待挖 ' + pending + ' 段（尚无 tick 留档）<br/><span style="color:var(--text-3)"><span style="font-family:ui-monospace,monospace">remin tick</span> 可立即跑</span>';
+  } else { b.style.display = 'none'; }
+}
+
 async function loadState(){
-  const d = await api('/api/state');
-  $('#meta').textContent = `v${d.version} · ${d.root}`;
-  const box = $('#batches'); box.innerHTML = '<div class="card"><h2>待审批次</h2><div id="blist"></div></div>';
-  const pending = (d.batches||[]).filter(b=>b.status!=='done' && b.pending>0);
-  const done = (d.batches||[]).filter(b=>!(b.status!=='done' && b.pending>0));
-  const list = $('#blist');
-  if(!pending.length) list.innerHTML = '<p class="hint">暂无待审——remin mine / bridge pull 产生候选后出现在此。</p>';
-  for(const b of pending){
-    const el = document.createElement('div');
-    el.className='batch'+(b.id===currentBatch?' sel':'');
-    el.innerHTML = `<div class="id">${esc(b.id)}</div><div class="types">${esc(b.source)} · ${fmtTypes(b.types)} · ${b.pending} 条</div>`;
-    el.onclick=()=>{ currentBatch=b.id; loadState(); loadBatch(b.id); };
-    list.appendChild(el);
+  state = await api('/api/state');
+  renderBadges();
+  const pending = (state.batches || []).filter(b => b.status !== 'done' && b.pending > 0);
+  const done = (state.batches || []).filter(b => !(b.status !== 'done' && b.pending > 0));
+  let html = '<div class="card"><h2>待审批次</h2><div id="blist">';
+  if (!pending.length) html += '<p class="hint">暂无待审——remin mine / bridge pull 产生候选后出现在此。</p>';
+  for (const b of pending){
+    const types = b.types || {};
+    const bar = Object.entries(types).map(([t,n]) => '<i style="flex:' + n + ';background:' + typeColor(t) + '"></i>').join('');
+    html += '<div class="batch' + (b.id === currentBatch ? ' sel' : '') + '" data-id="' + esc(b.id) + '">'
+      + '<div class="id">' + esc(b.id) + '</div>'
+      + '<div class="types">' + esc(b.source) + ' · ' + b.pending + ' 条'
+      + (Object.keys(types).length ? ' · ' + Object.entries(types).map(([t,n]) => esc(t) + ' ' + n).join(' · ') : '') + '</div>'
+      + (bar ? '<div class="typebar">' + bar + '</div>' : '') + '</div>';
   }
-  if(done.length){
-    const h=document.createElement('p'); h.className='hint'; h.textContent='已办批次 '+done.length+'（remin log 可查）';
-    list.appendChild(h);
-  }
+  if (done.length) html += '<p class="done-hint">已办批次 ' + done.length + '（remin log 可查）</p>';
+  html += '</div></div>';
+  $('#batches').innerHTML = html;
+  $$('#blist .batch').forEach(el => el.onclick = () => { currentBatch = el.dataset.id; confirmingReject = false; refresh(); });
 }
+
+/* ── 候选流（B1 卡片 / B3 动作条 / B2 焦点） ── */
+let batchSeq = 0;
 async function loadBatch(id){
-  const d = await api('/api/batch?id='+encodeURIComponent(id));
+  const seq = ++batchSeq;
+  const d = await api('/api/batch?id=' + encodeURIComponent(id));
+  if (seq !== batchSeq || currentBatch !== id) return; // 竞态：用户已切批，丢弃过期响应
+  candidates = d.candidates || [];
+  focusIdx = candidates.length ? 0 : -1;
+  renderDetail();
+}
+function candCard(c, i){
+  const handled = !!c._handled;
+  const bodyLong = (c.body || '').length > 90 || (c.body || '').split('\n').length > 3;
+  const prov = c.provenance || {};
+  return '<div class="cand' + (i === focusIdx && !handled ? ' focused' : '') + (handled ? ' handled' : '') + '" data-i="' + i + '">'
+    + '<div class="lbar" style="background:' + typeColor(c.type) + '"></div>'
+    + (i === focusIdx && !handled ? '<div class="pos">▸ ' + (i + 1) + '/' + candidates.length + '</div>' : '')
+    + '<div class="head"><span class="tag">' + esc(c.type) + '</span><span class="tag trust-' + esc(c.trust) + '">' + esc(c.trust) + '</span><span>' + esc(prov.origin || '') + '</span>'
+    + (c.expires ? '<span>ephemeral ' + esc(c.expires) + '</span>' : '')
+    + (handled ? '<span>' + (c._handled === 'adopt' ? '✓ 已采纳' : '已拒绝') + '</span>' : '') + '</div>'
+    + '<div class="body' + (bodyLong && !c._open ? ' clamp' : '') + '">' + esc(c.body) + '</div>'
+    + (bodyLong ? '<div class="more" data-more>' + (c._open ? '收起 ▴' : '展开 ▾') + '</div>' : '')
+    + '<div class="prov"><span>' + esc(prov.ref || '') + '</span><span>' + esc(c.captured_at || '') + '</span>'
+    + (prov.quote ? '<span class="quote-btn" data-quote>▸ 原话</span>' : '') + '</div>'
+    + (prov.quote ? '<div class="quote' + (c._quote ? ' open' : '') + '">“' + esc(prov.quote) + '”</div>' : '')
+    + (handled ? '' : '<div class="actions"><button class="act primary" data-a="promote">采纳 <span class="kbd">a</span></button><button class="act danger" data-a="reject">拒绝 <span class="kbd">r</span></button></div>')
+    + '</div>';
+}
+function renderDetail(){
   const box = $('#detail');
-  box.innerHTML = `<div class="card"><h2>${esc(id)}</h2><div id="cands"></div>
-    <div class="actions">
-      <button class="primary" onclick="act('promote')">采纳全部</button>
-      <button class="danger" onclick="act('reject')">拒绝全部</button>
-      <button onclick="act('promote','episodic')">仅采纳 recap(episodic)</button>
-      <button class="danger" onclick="act('reject','episodic')">仅拒 recap(episodic)</button>
-    </div><p class="hint">动作与 CLI 同语义（batch/all/type）；每候选可单独采纳/拒绝。</p></div>
-    <div class="card"><h2>检索</h2><div id="hits"></div></div>`;
-  const wrap = $('#cands');
-  if(!d.candidates.length) wrap.innerHTML='<p class="hint">该批次无待选。</p>';
-  for(const c of d.candidates){
-    const el = document.createElement('div'); el.className='cand';
-    el.innerHTML = `<div class="head"><span class="tag">${esc(c.type)}</span><span class="tag trust-${esc(c.trust)}">${esc(c.trust)}</span><span>${esc(c.provenance?.origin||'')}</span>${c.expires?`<span>ephemeral ${esc(c.expires)}</span>`:''}</div>
-      <div class="body">${esc(c.body)}</div>
-      <div class="prov">来源 ${esc(c.provenance?.ref||'')} · 采集 ${esc(c.captured_at||'')}</div>
-      <div class="actions"><button class="primary" data-id="${esc(c.id)}" onclick="actOne('promote',this.dataset.id)">采纳</button><button class="danger" data-id="${esc(c.id)}" onclick="actOne('reject',this.dataset.id)">拒绝</button></div>`;
-    wrap.appendChild(el);
+  if (!currentBatch){
+    box.innerHTML = '<div class="card"><h2>批次详情</h2><p class="hint">左侧选择待审批次；采纳=单一原子提交（记忆+supersession+版本+1+审计）。<br/>键盘 <span class="kbd">j</span>/<span class="kbd">k</span> 移动候选，<span class="kbd">a</span> 采纳 <span class="kbd">r</span> 拒绝，<span class="kbd">?</span> 帮助。</p></div>';
+    renderCtx(); return;
   }
+  const unhandled = candidates.filter(c => !c._handled).length;
+  let html = '<div class="card"><h2 style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span style="font-family:ui-monospace,monospace">' + esc(currentBatch) + '</span><span id="prog" style="font-weight:400"></span></h2>';
+  if (confirmingReject){
+    html += '<div class="confirm-box">拒绝本批次全部 <b>' + unhandled + '</b> 条？<div class="sub">归档可审计（remin log），但不进检索。</div>'
+      + '<div style="display:flex;gap:8px;margin-top:8px"><button class="act danger" id="confirmReject">确认拒绝</button><button class="act" id="cancelReject">取消</button></div></div>';
+  } else {
+    html += '<div class="bar">'
+      + '<button class="act primary" id="adoptAll">✓ 采纳全部（' + unhandled + '）</button>'
+      + '<span class="pair"><select id="typeSel"><option value="">仅作用于…</option>'
+      + ['episodic', 'procedural', 'preference', 'semantic', 'decision'].map(t => '<option value="' + t + '">' + t + (t === 'episodic' ? '（recap）' : '') + '</option>').join('')
+      + '</select><button class="act adopt-type" id="adoptType">采纳所选类型</button></span>'
+      + '<button class="act danger" id="rejectAll">拒绝全部…</button></div>';
+  }
+  if (!candidates.length) html += '<div class="cand" style="border-style:dashed;text-align:center;color:var(--text-3)"><div style="padding:12px 0;font-size:13px">本批次已清空 ✓</div></div>';
+  else html += candidates.map((c, i) => candCard(c, i)).join('');
+  html += '<p class="hint">动作与 CLI 同语义（batch/all/type）；每候选可单独采纳/拒绝。</p></div>';
+  box.innerHTML = html;
+
+  const prog = $('#prog');
+  if (prog) prog.textContent = '待审 ' + unhandled + ' / ' + candidates.length;
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on('#adoptAll', () => act('promote', { batch: currentBatch, all: true }));
+  on('#adoptType', () => {
+    const t = $('#typeSel').value;
+    if (!t) { toast('先在下拉里选类型', true); return; }
+    act('promote', { batch: currentBatch, all: true, type: t });
+  });
+  on('#rejectAll', () => { confirmingReject = true; renderDetail(); });
+  on('#confirmReject', () => { confirmingReject = false; act('reject', { batch: currentBatch, all: true }); });
+  on('#cancelReject', () => { confirmingReject = false; renderDetail(); });
+
+  $$('#detail .cand').forEach(el => {
+    const i = +el.dataset.i;
+    const more = el.querySelector('[data-more]');
+    if (more) more.onclick = () => { candidates[i]._open = !candidates[i]._open; renderDetail(); };
+    const qb = el.querySelector('[data-quote]');
+    if (qb) qb.onclick = () => { candidates[i]._quote = !candidates[i]._quote; renderDetail(); };
+    el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => actOne(b.dataset.a, i));
+  });
+  renderCtx();
 }
-async function act(kind, type){
-  const sel = {batch: currentBatch, all: true, type: type||''}; // type 分诊与 CLI 同语义：作用域=批次内该类型
-  await post(kind, sel);
+
+/* ── A1 上下文栏 ── */
+function renderCtx(){
+  const c = focusIdx >= 0 ? candidates[focusIdx] : null;
+  let html = '';
+  if (c && !c._handled){
+    const prov = c.provenance || {};
+    html += '<b>当前候选 ' + (focusIdx + 1) + '/' + candidates.length + '</b><br/>'
+      + '<span class="tag" style="color:' + typeColor(c.type) + '">' + esc(c.type) + '</span> '
+      + '来源 ' + esc(prov.origin || '') + ' · ' + esc(c.captured_at || '') + '<br/>'
+      + (prov.quote ? '<div class="ctx-quote">“' + esc(prov.quote.slice(0, 160)) + '”</div>' : '');
+  } else {
+    html += '<span class="hint">键盘 <span class="kbd">j</span>/<span class="kbd">k</span> 移动候选，<span class="kbd">a</span> 采纳 <span class="kbd">r</span> 拒绝，<span class="kbd">?</span> 帮助。</span>';
+  }
+  if (currentBatch && candidates.length){
+    const doneN = candidates.length - candidates.filter(x => !x._handled).length;
+    html += '<div style="margin-top:10px"><b>批次进度</b></div>'
+      + '<div class="typebar"><i style="flex:' + Math.max(doneN, 0.001) + ';background:var(--ok)"></i><i style="flex:' + Math.max(candidates.length - doneN, 0.001) + '"></i></div>'
+      + '<div style="font-size:11px;margin-top:3px">已审 ' + doneN + ' / ' + candidates.length + '</div>';
+  }
+  $('#ctxBody').innerHTML = html;
 }
-async function actOne(kind, id){ await post(kind, {ids:[id]}); }
-async function post(kind, sel){
-  try{
-    const r = await fetch('/api/'+kind, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(sel)});
+
+/* ── D1 趋势迷你图（eval/history 数据面） ── */
+async function loadHistory(){
+  let runs, histErr = null;
+  try { runs = await api('/api/history'); } catch (e) { runs = []; histErr = e.message; }
+  const box = $('#sparkBox');
+  if (!runs.length){
+    box.innerHTML = histErr
+      ? '<div class="spark-empty">历史读取失败：' + esc(histErr) + '</div>'
+      : '<div class="spark-empty">暂无实测记录<br/><span style="font-family:ui-monospace,monospace;font-size:11px">remin eval uplift --tasks &lt;file&gt; --record</span></div>';
+    return;
+  }
+  const shown = runs.slice(-12);
+  const first = runs[0].recall;
+  const last = shown[shown.length - 1];
+  let html = '<div class="spark">' + shown.map(r => {
+    const h = Math.max(4, Math.round((r.recall || 0) * 56));
+    const warn = (r.wrong_abstains || 0) > 0;
+    return '<div class="colwrap" title="' + esc(r.ts) + ' recall ' + (r.recall || 0).toFixed(2) + (warn ? ' · wrong-abstain ' + esc(String(r.wrong_abstains)) : '') + '">'
+      + '<div class="bar2' + (warn ? ' warn' : '') + '" style="height:' + h + 'px">' + (warn ? '<i class="flag">①</i>' : '') + '</div></div>';
+  }).join('') + '</div>';
+  const delta = (last.recall || 0) - (first || 0);
+  const flagged = shown.some(r => (r.wrong_abstains || 0) > 0);
+  html += '<div class="spark-delta">Δ首跑 ' + (delta >= 0 ? '+' : '') + delta.toFixed(2)
+    + (flagged ? ' · ①含 wrong-abstain（期望命中却弃权——衰减信号）' : '') + '</div>';
+  box.innerHTML = html;
+}
+
+/* ── 审收动作（B4 回执带 commit 归因） ── */
+async function act(kind, sel){
+  try {
+    const r = await fetch('/api/' + kind, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sel) });
     const j = await r.json();
-    if(!j.ok) throw new Error(j.error);
-    toast(kind==='promote'?'已采纳（原子提交）':'已拒绝（归档可审计）');
-    await loadState(); if(currentBatch) await loadBatch(currentBatch);
-  }catch(e){ toast('失败：'+e.message, false); }
+    if (!j.ok) throw new Error(j.error);
+    if (kind === 'promote') toast('✓ 已采纳 ' + j.data.MemoryIDs.length + ' 条 → v' + j.data.Version + '（<code>' + esc(j.data.Commit) + '</code>）');
+    else toast('✓ 已拒绝并归档 ' + (j.data.rejected || []).length + ' 条（<code>' + esc(j.data.commit) + '</code>）');
+    await reloadCurrent();
+  } catch (e) { toast('✗ ' + esc(e.message), true); }
 }
-$('#q').addEventListener('keydown', async ev=>{
-  if(ev.key!=='Enter') return;
-  const q = ev.target.value.trim(); if(!q) return;
-  try{
-    const d = await api('/api/search?q='+encodeURIComponent(q));
-    const box = $('#hits') || (()=>{ $('#detail').insertAdjacentHTML('beforeend','<div class="card"><h2>检索</h2><div id="hits"></div></div>'); return $('#hits'); })();
-    box.innerHTML = d.abstained ? `<div class="abstain">弃权：${esc(d.abstain_reason||'置信不足')}（宁可不知道）</div>`
-      : (d.results||[]).map(h=>`<div class="hit"><b>${esc(h.id)}</b> <span class="tag trust-${esc(h.trust)}">${esc(h.trust)}</span> <span class="tag">${esc(h.type)}</span><div>${esc(h.content)}</div></div>`).join('') || '<p class="hint">无命中。</p>';
-  }catch(e){ toast('检索失败：'+e.message, false); }
+async function actOne(kind, i){
+  const c = candidates[i];
+  if (!c || c._handled) return;
+  try {
+    const r = await fetch('/api/' + kind, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [c.id] }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    c._handled = kind === 'promote' ? 'adopt' : 'reject';
+    if (kind === 'promote') toast('✓ 已采纳 1 条 → v' + j.data.Version + '（<code>' + esc(j.data.Commit) + '</code>）');
+    else toast('✓ 已拒绝并归档 1 条（<code>' + esc(j.data.commit) + '</code>）');
+    moveFocus(1, true); renderDetail();
+    loadState().then(renderBadges);
+  } catch (e) { toast('✗ ' + esc(e.message), true); }
+}
+async function reloadCurrent(){
+  await loadState();
+  if (currentBatch){
+    try { await loadBatch(currentBatch); } catch (e) { currentBatch = null; renderDetail(); }
+  } else renderDetail();
+  loadHistory();
+}
+
+/* ── B2 键盘流（输入控件聚焦时不劫持） ── */
+function moveFocus(d, keep){
+  const alive = candidates.map((c, i) => ({ c, i })).filter(x => !x.c._handled);
+  if (!alive.length){ if (!keep) { focusIdx = -1; renderCtx(); } return; }
+  const cur = alive.findIndex(x => x.i === focusIdx);
+  const next = alive[Math.min(Math.max(cur + d, 0), alive.length - 1)];
+  focusIdx = next.i;
+  if (!keep) renderDetail();
+  const el = $$('#detail .cand')[focusIdx];
+  if (el) el.scrollIntoView({ block: 'nearest' });
+}
+document.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
+  if ((e.metaKey || e.ctrlKey) && e.key === '.'){ document.body.classList.toggle('ctx-open'); e.preventDefault(); return; }
+  if (e.key === 'Escape'){ $('#help').classList.remove('open'); closeDrawer(); document.body.classList.remove('ctx-open'); if (confirmingReject){ confirmingReject = false; renderDetail(); } return; }
+  if (typing) return;
+  if (e.key === '/'){ e.preventDefault(); $('#q').focus(); return; }
+  if (e.key === '?'){ $('#help').classList.add('open'); return; }
+  if (e.key === 'j'){ moveFocus(1); return; }
+  if (e.key === 'k'){ moveFocus(-1); return; }
+  if (e.key === 'a' || e.key === 'r'){
+    if (focusIdx >= 0 && candidates[focusIdx] && !candidates[focusIdx]._handled) actOne(e.key === 'a' ? 'promote' : 'reject', focusIdx);
+  }
 });
-function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-loadState();
+$('#help').onclick = () => $('#help').classList.remove('open');
+
+/* ── C1 检索（trust 色条 + 弃权可解释） ── */
+$('#q').addEventListener('keydown', async ev => {
+  if (ev.key !== 'Enter') return;
+  const q = ev.target.value.trim();
+  if (!q) return;
+  try {
+    const d = await api('/api/search?q=' + encodeURIComponent(q));
+    let card = $('#hitsCard');
+    if (!card){ $('#detail').insertAdjacentHTML('afterbegin', '<div class="card" id="hitsCard"><h2>检索</h2><div id="hits"></div></div>'); card = $('#hitsCard'); }
+    const hits = $('#hits');
+    if (d.abstained){
+      const reason = d.abstain_reason || '';
+      let title = '弃权：置信不足', why = '最高命中分数低于阈值。', sug = '💡 建议：换更具体的词再试。';
+      if (reason === 'word_match_required'){ title = '弃权：词级重合不足'; why = '查询与最高命中只共享散字（如「的/了」），没有共享完整词——宁可不知道。'; }
+      if (reason === 'no_match'){ title = '无相关记忆'; why = '库里没有与该查询相关的记忆。'; sug = ''; }
+      hits.innerHTML = '<div class="abstain' + (reason === 'no_match' ? ' none' : '') + '"><b>' + title + '</b><br/>' + esc(why) + (sug ? '<br/><span class="sug">' + sug + '</span>' : '') + '</div>';
+    } else {
+      hits.innerHTML = (d.results || []).map(h =>
+        '<div class="hit" style="border-left-color:' + (h.trust === 'human-verified' ? 'var(--t-hv-fg)' : h.trust === 'agent-claimed' ? 'var(--t-ac-fg)' : 'var(--t-uv-fg)') + '">'
+        + '<span class="id">' + esc(h.id) + '</span> <span class="tag trust-' + esc(h.trust) + '">' + esc(h.trust) + '</span> <span class="tag">' + esc(h.type) + '</span>' + (h.facet ? '<span class="tag">' + esc(h.facet) + '</span>' : '')
+        + '<span class="detail" data-mem="' + esc(h.id) + '">详情 ▸</span>'
+        + '<div class="body">' + esc(h.content) + '</div></div>').join('') || '<p class="hint">无命中。</p>';
+      $$('#hits .detail').forEach(el => el.onclick = () => openDrawer(el.dataset.mem));
+    }
+  } catch (e) { toast('检索失败：' + esc(e.message), true); }
+});
+
+/* ── C2 详情抽屉（supersession 链时间线） ── */
+function closeDrawer(){ $('#drawer').classList.remove('open'); $('#drawerBack').classList.remove('open'); }
+$('#drawerBack').onclick = closeDrawer;
+async function openDrawer(id){
+  try {
+    const d = await api('/api/memory?id=' + encodeURIComponent(id));
+    const m = d.memory || {};
+    const older = d.supersedes || [], newer = d.superseded_by || [];
+    const line = x => '<span class="' + (x.ID === m.ID ? 'cur' : 'old') + '">' + esc(x.ID) + ' ' + esc((x.Body || '').slice(0, 40)) + '</span>';
+    const chain = (older.length || newer.length)
+      ? '<h4>supersession 链</h4><div class="chain">'
+        + older.map(x => line(x) + '<br/><span class="arrow">↳ 被替代</span><br/>').join('')
+        + line(m)
+        + (newer.length ? '<br/><span class="arrow">↳ 已被替代</span><br/>' + newer.map(line).join('<br/>') : '')
+        + '</div>'
+      : '';
+    const prov = m.Provenance || {};
+    const v = m.Verify;
+    $('#drawer').innerHTML = '<span class="close">✕</span>'
+      + '<h3>' + esc(m.ID) + '</h3>'
+      + '<div class="tags"><span class="tag trust-' + esc(m.Trust) + '">' + esc(m.Trust) + '</span><span class="tag">' + esc(m.Type) + '</span>'
+      + (m.Facet ? '<span class="tag">' + esc(m.Facet) + '</span>' : '') + '<span class="tag">v' + esc(String(m.Version)) + '</span>'
+      + (m.Status && m.Status !== 'active' ? '<span class="tag">' + esc(m.Status) + '</span>' : '') + '</div>'
+      + '<div class="body">' + esc(m.Body) + '</div>'
+      + '<h4>来源</h4><div class="meta">' + esc(prov.Origin || '') + ' · ' + esc(m.CapturedAt || '') + '<br/>(' + esc(prov.Ref || '') + ')'
+      + (prov.Quote ? '<div class="quote">“' + esc(prov.Quote) + '”</div>' : '') + '</div>'
+      + (v ? '<h4>verify</h4><div class="meta">' + (v.Result === 'passed' ? '✓ 通过' : v.Result === 'failed' ? '✗ 失败' : '? 待验证') + ' · ' + esc(v.Condition || '') + '（' + esc(v.LastCheck || '') + '）</div>' : '')
+      + chain;
+    $('#drawer .close').onclick = closeDrawer;
+    $('#drawer').classList.add('open'); $('#drawerBack').classList.add('open');
+  } catch (e) { toast('详情失败：' + esc(e.message), true); }
+}
+
+/* ── A2 真源路径点击复制 ── */
+$('#rootBadge').onclick = () => { if (navigator.clipboard) navigator.clipboard.writeText(state.root); toast('已复制真源路径'); };
+
+async function refresh(){
+  try {
+    await loadState();
+    if (currentBatch) await loadBatch(currentBatch); else renderDetail();
+  } catch (e) { toast('加载失败：' + esc(e.message), true); }
+}
+refresh();
 </script>
 </body>
 </html>

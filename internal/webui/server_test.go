@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/remin-dev/remin/internal/core/eval"
 	"github.com/remin-dev/remin/internal/core/inbox"
+	"github.com/remin-dev/remin/internal/core/miner"
 	"github.com/remin-dev/remin/internal/store"
 	"github.com/remin-dev/remin/internal/testutil"
 )
@@ -101,17 +105,28 @@ func TestUIReviewFlow(t *testing.T) {
 		t.Fatalf("构成统计: %v", types)
 	}
 
-	// 详情面：候选逐条可见
+	// 详情面：候选逐条可见（字段级断言——snake_case 投影，防内嵌结构直出回归）
 	j = getJSON(t, srv.URL+"/api/batch?id="+batch)
 	cands := j["data"].(map[string]any)["candidates"].([]any)
 	if len(cands) != 2 {
 		t.Fatalf("应 2 候选: %v", cands)
+	}
+	c0 := cands[0].(map[string]any)
+	if c0["id"] == nil || c0["body"] == nil || c0["type"] == nil || c0["trust"] == nil {
+		t.Fatalf("候选字段须为 snake_case 且非空（UI 依赖）: %v", c0)
+	}
+	if prov := c0["provenance"].(map[string]any); prov["origin"] == nil || prov["ref"] == nil || prov["quote"] == nil {
+		t.Fatalf("provenance 三要素须随行: %v", prov)
 	}
 
 	// 类型分诊拒绝：仅拒 episodic（与 CLI reject --batch X --all --type 同语义：all 场域内按 type 收窄）
 	j = postSel(t, srv.URL+"/api/reject", "application/json", map[string]any{"batch": batch, "all": true, "type": "episodic"})
 	if j["ok"] != true {
 		t.Fatalf("按类型拒绝应成功: %v", j)
+	}
+	rd := j["data"].(map[string]any)
+	if len(rd["rejected"].([]any)) != 1 || rd["commit"].(string) == "" {
+		t.Fatalf("拒绝回执须为 rejected/commit 形状（UI 回执依赖）: %v", rd)
 	}
 	// 全批采纳剩余
 	j = postSel(t, srv.URL+"/api/promote", "application/json", map[string]any{"batch": batch, "all": true})
@@ -252,5 +267,78 @@ func TestUIWriteAcceptsJSONCharset(t *testing.T) {
 	j := postSel(t, srv.URL+"/api/reject", "application/json; charset=utf-8", map[string]any{"batch": batch, "all": true})
 	if j["ok"] != true {
 		t.Fatalf("charset=utf-8 的 JSON 写应被接受: %v", j)
+	}
+}
+
+// TestUIStateExtendedFields 状态带数据面：记忆数/深挖待办/tick 留档（A2/D2 原型确认项）
+func TestUIStateExtendedFields(t *testing.T) {
+	srv, st := newUITest(t)
+	batch := seedBatch(t, st, "内容甲", "内容乙", "semantic")
+	postSel(t, srv.URL+"/api/promote", "application/json", map[string]any{"batch": batch, "all": true})
+
+	j := getJSON(t, srv.URL+"/api/state")
+	d := j["data"].(map[string]any)
+	if d["memories"].(float64) != 2 {
+		t.Fatalf("memories 应为 2: %v", d["memories"])
+	}
+	if _, has := d["deep_pending"]; !has {
+		t.Fatalf("deep_pending 字段应在（未配置 llm 时为 0）: %v", d)
+	}
+	if _, has := d["tick_last"]; !has {
+		t.Fatalf("tick_last 字段应在（无留档为 null）: %v", d)
+	}
+}
+
+// TestUIHistoryEndpoint 趋势数据面（D1 原型确认项）：eval/history.jsonl 读回
+func TestUIHistoryEndpoint(t *testing.T) {
+	srv, st := newUITest(t)
+	j := getJSON(t, srv.URL+"/api/history")
+	runs := j["data"].([]any)
+	if len(runs) != 0 {
+		t.Fatalf("无历史应为空数组: %v", runs)
+	}
+	if err := eval.AppendHistory(st.Root, eval.HistoryRun{TS: "t1", Mode: "store", Tasks: 2, Hits: 2, Recall: 1.0}); err != nil {
+		t.Fatal(err)
+	}
+	j = getJSON(t, srv.URL+"/api/history")
+	runs = j["data"].([]any)
+	if len(runs) != 1 {
+		t.Fatalf("应读回 1 条: %v", runs)
+	}
+	r := runs[0].(map[string]any)
+	if r["recall"].(float64) != 1.0 || r["mode"] != "store" {
+		t.Fatalf("历史内容: %v", r)
+	}
+}
+
+// TestUIHistoryCorruptFails400 历史坏行经 API 报 400（衰减数据不容静默丢行）
+func TestUIHistoryCorruptFails400(t *testing.T) {
+	srv, st := newUITest(t)
+	os.MkdirAll(filepath.Join(st.Root, "eval"), 0o755)
+	os.WriteFile(filepath.Join(st.Root, "eval", "history.jsonl"), []byte("{corrupt\n"), 0o644)
+	resp, err := http.Get(srv.URL + "/api/history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("坏历史应 400: %d", resp.StatusCode)
+	}
+}
+
+// TestUIStateWithDeepQueueAndTickLast 深挖待办>0 + tick 留档在状态带如实呈现（D2 数据面端到端）
+func TestUIStateWithDeepQueueAndTickLast(t *testing.T) {
+	srv, st := newUITest(t)
+	q := miner.LoadDeepQueue(st.Root)
+	if err := q.Append("/tmp/x.jsonl", 1, 9); err != nil {
+		t.Fatal(err)
+	}
+	j := getJSON(t, srv.URL+"/api/state")
+	d := j["data"].(map[string]any)
+	if d["deep_pending"].(float64) != 1 {
+		t.Fatalf("deep_pending 应 1: %v", d["deep_pending"])
+	}
+	if d["tick_last"] != nil {
+		t.Fatalf("未 tick 应无留档: %v", d["tick_last"])
 	}
 }

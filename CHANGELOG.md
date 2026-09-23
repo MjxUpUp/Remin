@@ -2,6 +2,20 @@
 
 本文件记录 Remin（随忆）各版本的用户可感变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### 新增
+
+- **remin ui v2 交互迭代**（11 项原型确认全数落地）：三栏工作台（批次/候选流/上下文栏，
+  窄屏折叠）；顶部状态带（真源点击复制·索引版本·记忆数·深挖待办徽章 hover 明细——接
+  tick 留档）；键盘审收流（`j/k` 移动、`a` 采纳、`r` 拒绝、`?` 帮助，输入框聚焦不劫持）；
+  候选卡片类型色条+长文截断+来源原话折叠；批次动作条拒绝需二次确认+类型分诊下拉化；
+  动作回执带 commit 归因（采纳→vN+短哈希）；检索 trust 色条+弃权可解释（word_match_required/
+  low_confidence/no_match 各配解释文案）；单条全貌抽屉（supersession 链时间线+verify）；
+  审收趋势迷你图（`eval/history` 数据面，wrong-abstain 警示色）；亮/暗双主题（跟随系统+
+  手动记忆）。修复两个 v0 静默缺陷：`/api/batch` 候选字段 snake_case 投影（内嵌结构 Go
+  字段名直出导致单条按钮失效）、`/api/reject` 回执形状（rejected/commit）、`/api/memory` supersession 链键名语义修正（supersedes/superseded_by，v0 反写潜伏未发）。
+
 ## [0.5.0] — 2026-09-22
 
 ### 新增
