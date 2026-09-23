@@ -15,7 +15,9 @@ import (
 	"net/url"
 
 	"github.com/remin-dev/remin/internal/core/audit"
+	"github.com/remin-dev/remin/internal/core/eval"
 	"github.com/remin-dev/remin/internal/core/inbox"
+	"github.com/remin-dev/remin/internal/core/miner"
 	"github.com/remin-dev/remin/internal/core/promotion"
 	"github.com/remin-dev/remin/internal/index"
 	"github.com/remin-dev/remin/internal/search"
@@ -64,7 +66,29 @@ func Handler(st *store.Store) http.Handler {
 			out = append(out, bv)
 		}
 		v, _ := st.Version()
-		writeJSON(w, map[string]any{"root": st.Root, "version": v, "batches": out})
+		stateView := map[string]any{
+			"root":         st.Root,
+			"version":      v,
+			"batches":      out,
+			"deep_pending": len(miner.LoadDeepQueue(st.Root).All()),
+			"tick_last":    miner.LoadTickLast(st.Root),
+		}
+		// 记忆数失败时缺省（前端显示 …）——错误时给 0 会误导
+		if ms, err := st.ListMemories(); err == nil {
+			stateView["memories"] = len(ms)
+		}
+		writeJSON(w, stateView)
+	})
+	mux.HandleFunc("GET /api/history", func(w http.ResponseWriter, r *http.Request) {
+		runs, err := eval.LoadHistory(st.Root)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if runs == nil {
+			runs = []eval.HistoryRun{} // 列表契约：空为 [] 而非 null
+		}
+		writeJSON(w, runs)
 	})
 	mux.HandleFunc("GET /api/batch", func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
@@ -77,13 +101,42 @@ func Handler(st *store.Store) http.Handler {
 			writeErr(w, err)
 			return
 		}
-		writeJSON(w, map[string]any{"id": id, "candidates": cands})
+		// 投影为 snake_case 视图：inbox.Candidate 内嵌 store.Memory（Go 字段名无 json
+		// tag），直出会让前端读到不存在的 snake_case 键（v0 单条按钮因此静默失效）
+		type provView struct {
+			Origin string `json:"origin,omitempty"`
+			Ref    string `json:"ref,omitempty"`
+			Quote  string `json:"quote,omitempty"`
+		}
+		type candView struct {
+			ID         string   `json:"id"`
+			Type       string   `json:"type"`
+			Trust      string   `json:"trust"`
+			Body       string   `json:"body"`
+			CapturedAt string   `json:"captured_at"`
+			Expires    string   `json:"expires,omitempty"`
+			Provenance provView `json:"provenance"`
+		}
+		out := make([]candView, 0, len(cands))
+		for _, c := range cands {
+			out = append(out, candView{
+				ID: c.ID, Type: c.Type, Trust: c.Trust, Body: c.Body,
+				CapturedAt: c.CapturedAt, Expires: c.Expires,
+				Provenance: provView{Origin: c.Provenance.Origin, Ref: c.Provenance.Ref, Quote: c.Provenance.Quote},
+			})
+		}
+		writeJSON(w, map[string]any{"id": id, "candidates": out})
 	})
 	mux.HandleFunc("POST /api/promote", reviewAction(st, func(in *inbox.Inbox, au *audit.Audit, ids []string) (any, error) {
 		return promotion.Promote(st, in, au, promotion.Request{CandidateIDs: ids})
 	}))
 	mux.HandleFunc("POST /api/reject", reviewAction(st, func(in *inbox.Inbox, au *audit.Audit, ids []string) (any, error) {
-		return promotion.Reject(st, in, au, ids, "")
+		res, err := promotion.Reject(st, in, au, ids, "")
+		if err != nil {
+			return nil, err
+		}
+		// 与 CLI --json 同形（rejected/commit）；promotion.Result 无 json tag 直出会是 Go 字段名
+		return map[string]any{"rejected": ids, "commit": res.Commit}, nil
 	}))
 	mux.HandleFunc("GET /api/search", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
@@ -116,7 +169,8 @@ func Handler(st *store.Store) http.Handler {
 			return
 		}
 		older, newer, _ := st.SupersessionChain(id)
-		writeJSON(w, map[string]any{"memory": m, "superseded_by": older, "supersedes": newer})
+		// 键名按语义：supersedes=本条替代的旧链；superseded_by=替代本条的新链
+		writeJSON(w, map[string]any{"memory": m, "supersedes": older, "superseded_by": newer})
 	})
 	return mux
 }

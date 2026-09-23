@@ -273,7 +273,9 @@ step "20. 审收 Web 界面（remin ui：API 审收往返）"
 "$BIN" ui --port 18473 --no-open &
 UI_PID=$!
 for i in $(seq 1 20); do curl -s -m 1 -o /dev/null http://127.0.0.1:18473/api/state && break; sleep 0.5; done
-curl -fsS http://127.0.0.1:18473/api/state | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["ok"] and d["data"]["batches"], d; print("ui state OK")' || { kill $UI_PID; exit 1; }
+curl -fsS http://127.0.0.1:18473/api/state | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];assert d["batches"] and "memories" in d and "deep_pending" in d and "tick_last" in d, d; print("ui state OK（含状态带扩展字段）")' || { kill $UI_PID; exit 1; }
+curl -fsS http://127.0.0.1:18473/api/history | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];assert d==[] or isinstance(d,list), d; print("ui history OK")' || { kill $UI_PID; exit 1; }
+curl -fsS "http://127.0.0.1:18473/api/batch?id=$("$BIN" inbox --json | python3 -c 'import json,sys;bs=json.load(sys.stdin)["data"]["batches"];print(next((b["id"] for b in bs if b["status"]!="done" and b["pending"]>0), ""))')" | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];c=d["candidates"][0];assert c["id"] and c["body"] and c["provenance"], c; print("ui batch 候选 snake_case 投影 OK")' || { kill $UI_PID; exit 1; }
 curl -fsS http://127.0.0.1:18473/ | grep -q "Remin" && echo "ui 首页 OK" || { kill $UI_PID; exit 1; }
 UB=$("$BIN" inbox --json | python3 -c 'import json,sys;bs=json.load(sys.stdin)["data"]["batches"];print(next(b["id"] for b in bs if b["status"]!="done" and b["pending"]>0))')
 printf '{"batch":"%s","all":true}' "$UB" > "$SB/ui-sel.json"

@@ -225,7 +225,7 @@ query → 快照版本定位 → facet/trust 过滤 → 确定性 BM25
 
 ### 8.4 GUI（v0 已落地：remin ui 本地 Web 审收界面；OP-6 形态待定）
 
-核心已按可包裹设计：inbox 审收界面 = `inbox --json` + `promote/reject --json`；一键接线 = `doctor --install --json`；内嵌 MCP = 拉起 `remin mcp`。GUI 只是皮肤，不引入新核心能力。（v0 落地：`remin ui` 本地 Web 审收界面）
+核心已按可包裹设计：inbox 审收界面 = `inbox --json` + `promote/reject --json`；一键接线 = `doctor --install --json`；内嵌 MCP = 拉起 `remin mcp`。GUI 只是皮肤，不引入新核心能力（读模型缓存例外：tick 留档 transcripts-cache/tick-last.json 供徽章明细，属可弃缓存非能力面）。（v0 落地：`remin ui` 本地 Web 审收界面；v2 迭代见 CHANGELOG [Unreleased]）
 
 ## 9. Eval Harness（模型无关，规则可判定）
 
