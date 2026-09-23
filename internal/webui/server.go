@@ -314,7 +314,7 @@ func Handler(st *store.Store) http.Handler {
 		cand.Modified = now
 		cand.Trust = store.TrustHumanVerified
 		cand.Source = store.SourceHuman
-		cand.Provenance = store.Provenance{Origin: "human-ui", Ref: "remin ui 提出新版本", Quote: req.Body}
+		cand.Provenance = store.Provenance{Origin: "human-ui", Ref: "remin ui 提出新版本", Quote: truncateUI(req.Body, 400)}
 		cand.Version = store.FormatVersion
 		cand.Body = req.Body
 		cand.Supersedes = req.Supersedes
