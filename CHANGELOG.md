@@ -13,7 +13,7 @@
   动作回执带 commit 归因（采纳→vN+短哈希）；检索 trust 色条+弃权可解释（word_match_required/
   low_confidence/no_match 各配解释文案）；单条全貌抽屉（supersession 链时间线+verify）；
   审收趋势迷你图（`eval/history` 数据面，wrong-abstain 警示色）；亮/暗双主题（跟随系统+
-  手动记忆）。修复两个 v0 静默缺陷：`/api/batch` 候选字段 snake_case 投影（内嵌结构 Go
+  手动记忆）。修复三个 v0 静默缺陷：`/api/batch` 候选字段 snake_case 投影（内嵌结构 Go
   字段名直出导致单条按钮失效）、`/api/reject` 回执形状（rejected/commit）、`/api/memory` supersession 链键名语义修正（supersedes/superseded_by，v0 反写潜伏未发）。
 
 ## [0.5.0] — 2026-09-22
