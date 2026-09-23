@@ -15,6 +15,15 @@
   可钉扎引擎（跳过探测，演练/测试确定性）。**零配置即用**：本机装了 claude 或 codex 并登录，
   `--deep` 直接可用。
 
+### 新增
+
+- **记忆管理面**（remin ui 记忆库 tab）：已沉淀记忆的浏览（类型分组+类型色条+trust/facet/
+  状态筛选+正文搜索）与全生命周期看板（total/active/superseded/expired/by_type/by_trust/
+  verify_failed）；详情抽屉带生命周期操作——**supersede 修改流**（提出新版本→inbox 审收→
+  promote 后旧条退出检索，A6 原件不可变下的正确编辑；`propose --supersedes` CLI 同语义）
+  与**退休**（status→expired 退出检索，理由进 git 提交与 Provenance 尾注，可重新激活；VERSION 推进+BM25 重建
+  保证 search/MCP 立即生效）。退休/重新激活走三层写防线+WithRoot+git 提交。
+
 ### 修复
 
 - **启发式提取精度**（真实库 61 条候选诊断驱动）：正文改取**触发句**而非消息首句

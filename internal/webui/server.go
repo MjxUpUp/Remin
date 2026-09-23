@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/remin-dev/remin/internal/core/audit"
 	"github.com/remin-dev/remin/internal/core/eval"
@@ -172,6 +173,164 @@ func Handler(st *store.Store) http.Handler {
 		// 键名按语义：supersedes=本条替代的旧链；superseded_by=替代本条的新链
 		writeJSON(w, map[string]any{"memory": m, "supersedes": older, "superseded_by": newer})
 	})
+	mux.HandleFunc("GET /api/memories", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		ms, err := st.ListMemories()
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		type memView struct {
+			ID         string `json:"id"`
+			Type       string `json:"type"`
+			Facet      string `json:"facet"`
+			Status     string `json:"status"`
+			Trust      string `json:"trust"`
+			Body       string `json:"body"`
+			CapturedAt string `json:"captured_at"`
+			Expires    string `json:"expires,omitempty"`
+			Origin     string `json:"origin"`
+			Verify     string `json:"verify,omitempty"`
+		}
+		out := []memView{} // 列表契约：空为 []
+		ftype, fstatus, ftrust := q.Get("type"), q.Get("status"), q.Get("trust")
+		fq := q.Get("q")
+		for _, m := range ms {
+			if ftype != "" && m.Type != ftype {
+				continue
+			}
+			if fstatus != "" && m.Status != fstatus {
+				continue
+			}
+			if ftrust != "" && m.Trust != ftrust {
+				continue
+			}
+			if fq != "" && !strings.Contains(m.Body, fq) {
+				continue
+			}
+			v := memView{
+				ID: m.ID, Type: m.Type, Facet: m.Facet, Status: m.Status, Trust: m.Trust,
+				Body: m.Body, CapturedAt: m.CapturedAt, Expires: m.Expires,
+				Origin: m.Provenance.Origin,
+			}
+			if m.Verify != nil {
+				v.Verify = m.Verify.Result
+			}
+			out = append(out, v)
+		}
+		writeJSON(w, map[string]any{"memories": out})
+	})
+	mux.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
+		ms, err := st.ListMemories()
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		byStatus, byType, byTrust := map[string]int{}, map[string]int{}, map[string]int{}
+		verifyFailed := 0
+		for _, m := range ms {
+			byStatus[m.Status]++
+			byType[m.Type]++
+			byTrust[m.Trust]++
+			if m.Verify != nil && m.Verify.Result == store.VerifyFailed {
+				verifyFailed++
+			}
+		}
+		writeJSON(w, map[string]any{
+			"total":         len(ms),
+			"by_status":     byStatus,
+			"by_type":       byType,
+			"by_trust":      byTrust,
+			"verify_failed": verifyFailed,
+		})
+	})
+	// 退休/重新激活（写操作，走三层防线 + WithRoot + VERSION 推进 + 索引重建）
+	mux.HandleFunc("POST /api/memory/retire", memoryAction(st, func(id, reason string) (any, error) {
+		if err := lifecycleTransition(st, id, reason, false); err != nil {
+			return nil, err
+		}
+		return map[string]any{"id": id, "status": store.StatusExpired}, nil
+	}))
+	mux.HandleFunc("POST /api/memory/reactivate", memoryAction(st, func(id, reason string) (any, error) {
+		if err := lifecycleTransition(st, id, reason, true); err != nil {
+			return nil, err
+		}
+		return map[string]any{"id": id, "status": store.StatusActive}, nil
+	}))
+	// propose（「提出新版本」按钮 → 与 CLI propose --supersedes 同语义）
+	mux.HandleFunc("POST /api/propose", func(w http.ResponseWriter, r *http.Request) {
+		if !loopbackHost(r.Host) {
+			writeErr(w, fmt.Errorf("写操作只接受本机回环 Host"))
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && !loopbackOrigin(origin) {
+			writeErr(w, fmt.Errorf("写操作只接受本机来源"))
+			return
+		}
+		mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || mt != "application/json" {
+			writeErr(w, fmt.Errorf("写操作要求 Content-Type: application/json"))
+			return
+		}
+		var req struct {
+			Body       string `json:"body"`
+			Type       string `json:"type"`
+			Supersedes string `json:"supersedes"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil || req.Body == "" {
+			writeErr(w, fmt.Errorf("请求体须为 {body, type, supersedes}"))
+			return
+		}
+		mtype := req.Type
+		if mtype == "" {
+			mtype = store.TypeSemantic
+		}
+		if !store.ValidTypes[mtype] {
+			writeErr(w, fmt.Errorf("非法 type: %s", mtype))
+			return
+		}
+		facet := "dev"
+		if req.Supersedes != "" {
+			old, err := st.GetMemory(req.Supersedes)
+			if err != nil {
+				writeErr(w, fmt.Errorf("supersedes 指定的记忆不存在: %s", req.Supersedes))
+				return
+			}
+			if old.Status != store.StatusActive {
+				writeErr(w, fmt.Errorf("supersedes 指定的记忆状态为 %s（仅 active 可被替代）", old.Status))
+				return
+			}
+			if old.Facet != "" {
+				facet = old.Facet // 继承旧记忆 facet——否则替代品落在 dev，work 记忆替换后从原 facet 视图消失
+			}
+		}
+		now := store.NowTime()
+		cand := &inbox.Candidate{}
+		cand.Type = mtype
+		cand.Facet = facet
+		cand.Status = store.StatusCandidate
+		cand.CapturedAt = now
+		cand.ReviewedAt = store.TimeUnknown
+		cand.Modified = now
+		cand.Trust = store.TrustHumanVerified
+		cand.Source = store.SourceHuman
+		cand.Provenance = store.Provenance{Origin: "human-ui", Ref: "remin ui 提出新版本", Quote: truncateUI(req.Body, 400)}
+		cand.Version = store.FormatVersion
+		cand.Body = req.Body
+		cand.Supersedes = req.Supersedes
+		var batchID string
+		var ids []string
+		err = store.WithRoot(st.Root, func() error {
+			var e error
+			batchID, ids, e = inbox.New(st).AddBatch("manual", []*inbox.Candidate{cand})
+			return e
+		})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"batch": batchID, "candidate": ids[0]})
+	})
 	return mux
 }
 
@@ -217,6 +376,98 @@ func reviewAction(st *store.Store, call func(*inbox.Inbox, *audit.Audit, []strin
 }
 
 // loopbackHost Host 头必须是回环字面量（含可选端口）
+// memoryAction 记忆管理写动作共用管线：三层防线（Host/Origin/JSON）→ WithRoot 互斥 → 核心调用
+func memoryAction(st *store.Store, call func(id, reason string) (any, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !loopbackHost(r.Host) {
+			writeErr(w, fmt.Errorf("写操作只接受本机回环 Host"))
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && !loopbackOrigin(origin) {
+			writeErr(w, fmt.Errorf("写操作只接受本机来源"))
+			return
+		}
+		mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || mt != "application/json" {
+			writeErr(w, fmt.Errorf("写操作要求 Content-Type: application/json"))
+			return
+		}
+		var req struct {
+			ID     string `json:"id"`
+			Reason string `json:"reason"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil || req.ID == "" {
+			writeErr(w, fmt.Errorf("请求体须为 {id, reason}"))
+			return
+		}
+		var result any
+		err = store.WithRoot(st.Root, func() error {
+			var e error
+			result, e = call(req.ID, req.Reason)
+			return e
+		})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, result)
+	}
+}
+
+// lifecycleTransition 生命周期事务（持锁内调用）：状态迁移 → VERSION 推进 →
+// 索引重建 → git 提交（改变检索真值必须推版本——否则 BM25 快照仍含旧状态，
+// 退休的记忆在 search/MCP 里仍然可见，违反「退休=退出检索」承诺）
+func lifecycleTransition(st *store.Store, id, reason string, reactivate bool) error {
+	var err error
+	if reactivate {
+		err = st.Reactivate(id, reason)
+	} else {
+		err = st.Retire(id, reason)
+	}
+	if err != nil {
+		return err
+	}
+	v, err := st.Version()
+	if err != nil {
+		return err
+	}
+	if err := st.WriteVersion(v + 1); err != nil {
+		return err
+	}
+	v++
+	// 索引重建（加速层，落盘失败不致命——版本号已推进，检索会触发 Ensure 重建）
+	if ms, le := st.ListMemories(); le == nil {
+		_ = index.Build(v, ms).Persist(st.Root)
+	}
+	action := "retire"
+	if reactivate {
+		action = "reactivate"
+	}
+	if _, err := store.GitCommit(st.Root, fmt.Sprintf("%s: %s%s", action, id, commitNote(reason))); err != nil {
+		return err
+	}
+	return nil
+}
+
+func truncateUI(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
+func commitNote(reason string) string {
+	if reason == "" {
+		return ""
+	}
+	tr := []rune(reason)
+	if len(tr) > 80 {
+		tr = tr[:80]
+	}
+	return "（" + string(tr) + "）"
+}
+
 func loopbackHost(host string) bool {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h

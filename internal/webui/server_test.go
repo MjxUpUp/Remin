@@ -13,6 +13,7 @@ import (
 	"github.com/remin-dev/remin/internal/core/eval"
 	"github.com/remin-dev/remin/internal/core/inbox"
 	"github.com/remin-dev/remin/internal/core/miner"
+	"github.com/remin-dev/remin/internal/index"
 	"github.com/remin-dev/remin/internal/store"
 	"github.com/remin-dev/remin/internal/testutil"
 )
@@ -340,5 +341,168 @@ func TestUIStateWithDeepQueueAndTickLast(t *testing.T) {
 	}
 	if d["tick_last"] != nil {
 		t.Fatalf("未 tick 应无留档: %v", d["tick_last"])
+	}
+}
+
+// ── 记忆管理面契约 ─────────────────────────────────────────────────────────────
+
+// seedMemory 直接落一条已沉淀记忆（不经 inbox——模拟已 promote 的记忆）
+func seedMemory(t *testing.T, st *store.Store, body, typ, status string, expires string) string {
+	t.Helper()
+	m := &store.Memory{
+		Type: typ, Facet: "dev", Status: status,
+		CapturedAt: store.NowTime(), ReviewedAt: store.NowTime(), Modified: store.NowTime(),
+		Trust: store.TrustHumanVerified, Source: store.SourceAgent,
+		Provenance: store.Provenance{Origin: "t", Ref: "t#1", Quote: body},
+		Version:    store.FormatVersion, Body: body, Expires: expires,
+	}
+	m.ID, _ = store.NewMemoryID()
+	if err := st.SaveMemory(m); err != nil {
+		t.Fatal(err)
+	}
+	// seed 后立即提交（retire/reactivate 走 WithRoot 脏树检查——不 commit 会 400）
+	if _, err := store.GitCommit(st.Root, "test: seed "+m.ID); err != nil {
+		t.Fatal(err)
+	}
+	return m.ID
+}
+
+// TestUIMemoriesList /api/memories 列表端点（记忆库浏览数据面）
+func TestUIMemoriesList(t *testing.T) {
+	srv, st := newUITest(t)
+	seedMemory(t, st, "构建走 pnpm", "preference", store.StatusActive, "")
+	seedMemory(t, st, "部署先跑迁移", "procedural", store.StatusActive, "")
+	seedMemory(t, st, "旧数据库是 Postgres", "semantic", store.StatusSuperseded, "")
+
+	j := getJSON(t, srv.URL+"/api/memories")
+	memories := j["data"].(map[string]any)["memories"].([]any)
+	if len(memories) != 3 {
+		t.Fatalf("应列出全部 3 条: %d", len(memories))
+	}
+
+	// 按类型筛选
+	j = getJSON(t, srv.URL+"/api/memories?type=preference")
+	memories = j["data"].(map[string]any)["memories"].([]any)
+	if len(memories) != 1 {
+		t.Fatalf("类型筛选应 1 条: %d", len(memories))
+	}
+
+	// 按状态筛选
+	j = getJSON(t, srv.URL+"/api/memories?status=superseded")
+	memories = j["data"].(map[string]any)["memories"].([]any)
+	if len(memories) != 1 {
+		t.Fatalf("状态筛选应 1 条: %d", len(memories))
+	}
+}
+
+// TestUIDashboard /api/dashboard 看板数据面（全生命周期计数）
+func TestUIDashboard(t *testing.T) {
+	srv, st := newUITest(t)
+	seedMemory(t, st, "a", "preference", store.StatusActive, "")
+	seedMemory(t, st, "b", "procedural", store.StatusActive, "")
+	seedMemory(t, st, "c", "semantic", store.StatusSuperseded, "")
+	seedMemory(t, st, "d", "episodic", store.StatusExpired, "7d")
+
+	j := getJSON(t, srv.URL+"/api/dashboard")
+	d := j["data"].(map[string]any)
+	if d["total"].(float64) != 4 {
+		t.Fatalf("total 应 4: %v", d["total"])
+	}
+	byStatus := d["by_status"].(map[string]any)
+	if byStatus["active"].(float64) != 2 || byStatus["superseded"].(float64) != 1 || byStatus["expired"].(float64) != 1 {
+		t.Fatalf("by_status 应 active=2/superseded=1/expired=1: %v", byStatus)
+	}
+	byType := d["by_type"].(map[string]any)
+	if byType["preference"].(float64) != 1 || byType["procedural"].(float64) != 1 {
+		t.Fatalf("by_type: %v", byType)
+	}
+}
+
+// TestUIMemoriesEmpty 列表空态（[] 而非 null）
+func TestUIMemoriesEmpty(t *testing.T) {
+	srv, _ := newUITest(t)
+	j := getJSON(t, srv.URL+"/api/memories")
+	memories := j["data"].(map[string]any)["memories"].([]any)
+	if len(memories) != 0 {
+		t.Fatalf("空态应为 []: %v", memories)
+	}
+}
+
+// TestUIMemoryRetireReactivate 退休/重新激活端到端（WithRoot 下 status 迁移 + git 提交）
+func TestUIMemoryRetireReactivate(t *testing.T) {
+	srv, st := newUITest(t)
+	id := seedMemory(t, st, "构建走 pnpm", "preference", store.StatusActive, "")
+
+	// 退休
+	j := postJSONBody(t, srv.URL+"/api/memory/retire", map[string]any{"id": id, "reason": "已切换到 turborepo"})
+	if j["ok"] != true {
+		t.Fatalf("退休应成功: %v", j)
+	}
+	m, _ := st.GetMemory(id)
+	if m.Status != store.StatusExpired {
+		t.Fatalf("退休后 status 应 expired: %s", m.Status)
+	}
+
+	// 重新激活
+	j = postJSONBody(t, srv.URL+"/api/memory/reactivate", map[string]any{"id": id})
+	if j["ok"] != true {
+		t.Fatalf("重新激活应成功: %v", j)
+	}
+	m, _ = st.GetMemory(id)
+	if m.Status != store.StatusActive {
+		t.Fatalf("重新激活后 status 应 active: %s", m.Status)
+	}
+}
+
+// TestUIMemoryRetireWrongStatusRejects 非active记忆不可退休（前置状态校验）
+func TestUIMemoryRetireWrongStatusRejects(t *testing.T) {
+	srv, st := newUITest(t)
+	id := seedMemory(t, st, "旧事实", "semantic", store.StatusSuperseded, "")
+	j := postJSONBody(t, srv.URL+"/api/memory/retire", map[string]any{"id": id})
+	if j["ok"] != false {
+		t.Fatalf("superseded 不可退休: %v", j)
+	}
+}
+
+func postJSONBody(t *testing.T, url string, body map[string]any) map[string]any {
+	t.Helper()
+	data, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var j map[string]any
+	json.NewDecoder(resp.Body).Decode(&j)
+	j["_status"] = float64(resp.StatusCode)
+	return j
+}
+
+// TestUIRetireUpdatesIndexVersion P1 修复杀灭：退休后 VERSION 推进且新索引不含退休记忆
+// （否则 BM25 快照仍含 active 状态——search/MPC 仍可命中退休记忆，违反退出检索承诺）
+func TestUIRetireUpdatesIndexVersion(t *testing.T) {
+	srv, st := newUITest(t)
+	id := seedMemory(t, st, "构建走 pnpm", "preference", store.StatusActive, "")
+	v0, _ := st.Version()
+
+	j := postJSONBody(t, srv.URL+"/api/memory/retire", map[string]any{"id": id})
+	if j["ok"] != true {
+		t.Fatalf("退休应成功: %v", j)
+	}
+	v1, _ := st.Version()
+	if v1 <= v0 {
+		t.Fatalf("退休应推进 VERSION: %d → %d", v0, v1)
+	}
+	// 新版本索引中该记忆的 Status 应为 expired（search.visible() 过滤 active）
+	idx, err := index.Ensure(st, v1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range idx.Docs {
+		if d.ID == id && d.Status == store.StatusActive {
+			t.Fatalf("退休记忆在新索引中仍标 active（BM25 快照会命中它）: %s", d.ID)
+		}
 	}
 }

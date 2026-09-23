@@ -42,6 +42,24 @@
   .badge.deep:hover .tip { display: block; }
   header .grow { flex: 1; }
   header input[type=search] { flex: 2; min-width: 200px; max-width: 460px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: var(--surface); color: var(--text); }
+  .tab-btn { font-size: 13px; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; color: var(--text-2); }
+  .tab-btn.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  #reviewView { display: grid; grid-template-columns: 300px minmax(0,1fr) 320px; gap: 14px; align-items: start; max-width: 1400px; margin: 0 auto; width: 100%; }
+  @media (max-width: 1100px) { #reviewView { grid-template-columns: 250px minmax(0,1fr); } #reviewView #ctxCol { display: none; } }
+  #libraryView { display: grid; max-width: 1400px; margin: 0 auto; width: 100%; align-items: start; }
+  .dash-stat { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+  .dash-stat b { color: var(--text); font-size: 14px; }
+  .lib-mem { border: 1px solid var(--border); border-radius: 6px; padding: 10px 10px 10px 13px; margin-bottom: 8px; background: var(--surface); position: relative; cursor: pointer; }
+  .lib-mem:hover { border-color: var(--accent); }
+  .lib-mem .lbar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 6px 0 0 6px; }
+  .lib-mem .head { display: flex; gap: 7px; align-items: center; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+  .lib-mem .body { margin: 6px 0 4px; font-size: 14px; }
+  .lib-mem .prov { font-size: 12px; color: var(--text-3); }
+  .lib-mem.retired { opacity: .55; }
+  .lib-mem .actions { display: flex; gap: 8px; margin-top: 7px; }
+  .chip-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 12px; font-size: 12px; border: 1px solid var(--border); cursor: pointer; background: var(--surface); color: var(--text-2); }
+  .chip-btn.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+  .supersede-panel { background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; padding: 14px; font-size: 13px; margin-bottom: 12px; }
   .kbd { font-family: ui-monospace, monospace; font-size: 11px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface-2); color: var(--text-2); }
   #themeBtn { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 13px; color: var(--text-2); }
 
@@ -160,16 +178,40 @@
   <span class="grow"></span>
   <input type="search" id="q" placeholder="检索记忆（trust 随行；低置信弃权）">
   <span class="kbd">/</span>
+  <button class="tab-btn on" id="tabReview" title="审收面">📥 审收</button>
+  <button class="tab-btn" id="tabLibrary" title="记忆库">📚 记忆库</button>
   <button id="themeBtn" title="切换亮/暗主题">🌙</button>
 </header>
 <div id="ctxBackdrop"></div>
 <main>
-  <section class="col" id="batches"></section>
-  <section class="col" id="detail"></section>
-  <section class="col" id="ctxCol">
-    <div class="card"><h2>上下文</h2><div class="ctx-sec" id="ctxBody"></div></div>
-    <div class="card"><h2>审收趋势</h2><div id="sparkBox"></div></div>
-  </section>
+  <!-- 审收面 -->
+  <div id="reviewView" class="view">
+    <section class="col" id="batches"></section>
+    <section class="col" id="detail"></section>
+    <section class="col" id="ctxCol">
+      <div class="card"><h2>上下文</h2><div class="ctx-sec" id="ctxBody"></div></div>
+      <div class="card"><h2>审收趋势</h2><div id="sparkBox"></div></div>
+    </section>
+  </div>
+  <!-- 记忆库面 -->
+  <div id="libraryView" class="view" style="display:none;grid-template-columns:260px minmax(0,1fr);gap:14px">
+    <section class="col" id="libSidebar">
+      <div class="card"><h2>看板</h2><div id="dashBox"></div></div>
+      <div class="card"><h2>筛选</h2>
+        <div id="typeChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="libStatus" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text)">
+            <option value="">全部状态</option><option value="active">active</option><option value="superseded">superseded</option><option value="expired">expired</option>
+          </select>
+          <select id="libTrust" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text)">
+            <option value="">全部 trust</option><option value="human-verified">human-verified</option><option value="unverified">unverified</option><option value="agent-claimed">agent-claimed</option>
+          </select>
+        </div>
+        <input id="libSearch" placeholder="搜索正文…" style="width:100%;margin-top:8px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface);color:var(--text)">
+      </div>
+    </section>
+    <section class="col" id="libList"></section>
+  </div>
 </main>
 <div id="drawerBack"></div>
 <aside id="drawer"></aside>
@@ -477,7 +519,7 @@ $('#q').addEventListener('keydown', async ev => {
 /* ── C2 详情抽屉（supersession 链时间线） ── */
 function closeDrawer(){ $('#drawer').classList.remove('open'); $('#drawerBack').classList.remove('open'); }
 $('#drawerBack').onclick = closeDrawer;
-async function openDrawer(id){
+async function openDrawer(id, showLifecycle){
   try {
     const d = await api('/api/memory?id=' + encodeURIComponent(id));
     const m = d.memory || {};
@@ -501,10 +543,163 @@ async function openDrawer(id){
       + '<h4>来源</h4><div class="meta">' + esc(prov.Origin || '') + ' · ' + esc(m.CapturedAt || '') + '<br/>(' + esc(prov.Ref || '') + ')'
       + (prov.Quote ? '<div class="quote">“' + esc(prov.Quote) + '”</div>' : '') + '</div>'
       + (v ? '<h4>verify</h4><div class="meta">' + (v.Result === 'passed' ? '✓ 通过' : v.Result === 'failed' ? '✗ 失败' : '? 待验证') + ' · ' + esc(v.Condition || '') + '（' + esc(v.LastCheck || '') + '）</div>' : '')
-      + chain;
+      + chain
+      + (showLifecycle && m.Status === 'active'
+        ? '<div style="display:flex;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'
+          + '<button class="act primary" id="drawerSupersede">✏ 提出新版本</button>'
+          + '<button class="act danger" id="drawerRetire">🗃 退休…</button></div>'
+        : showLifecycle && m.Status === 'expired'
+        ? '<div style="display:flex;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'
+          + '<button class="act" id="drawerReactivate">↩ 重新激活</button></div>'
+        : '');
     $('#drawer .close').onclick = closeDrawer;
+    const supBtn = $('#drawerSupersede');
+    if (supBtn) supBtn.onclick = () => { closeDrawer(); showSupersedePanel(id, m.Body, m.Type); };
+    const retBtn = $('#drawerRetire');
+    if (retBtn) retBtn.onclick = () => { closeDrawer(); showRetireConfirm(id, m.Body); };
+    const reBtn = $('#drawerReactivate');
+    if (reBtn) reBtn.onclick = () => memoryLifecycle('/api/memory/reactivate', id, '');
     $('#drawer').classList.add('open'); $('#drawerBack').classList.add('open');
   } catch (e) { toast('详情失败：' + esc(e.message), true); }
+}
+
+/* ── 记忆库面 ── */
+let libType = '';
+async function switchTab(tab) {
+  const review = tab === 'review';
+  $('#reviewView').style.display = review ? '' : 'none';
+  $('#libraryView').style.display = review ? 'none' : '';
+  $('#tabReview').classList.toggle('on', review);
+  $('#tabLibrary').classList.toggle('on', !review);
+  document.body.classList.remove('ctx-open');
+  if (!review) await loadLibrary();
+}
+$('#tabReview').onclick = () => switchTab('review');
+$('#tabLibrary').onclick = () => switchTab('library');
+
+async function loadLibrary() { await Promise.all([loadDash(), loadMemList()]); }
+
+async function loadDash() {
+  let d;
+  try { d = await api('/api/dashboard'); } catch (e) { d = null; }
+  if (!d) { $('#dashBox').innerHTML = '<span class="hint">看板加载失败</span>'; return; }
+  const bs = d.by_status || {}, bt = d.by_type || {}, btr = d.by_trust || {};
+  let html = '<div class="dash-stat"><b>' + d.total + '</b> 条记忆</div>';
+  html += '<div class="dash-stat"><b>' + (bs.active || 0) + '</b> active · <b>' + (bs.superseded || 0) + '</b> superseded · <b>' + (bs.expired || 0) + '</b> expired</div>';
+  const types = Object.entries(bt).map(([t, n]) => t + ' ' + n).join(' · ');
+  if (types) html += '<div class="dash-stat" style="font-size:11px">' + esc(types) + '</div>';
+  const trusts = Object.entries(btr).map(([t, n]) => t + ' ' + n).join(' · ');
+  if (trusts) html += '<div class="dash-stat" style="font-size:11px">' + esc(trusts) + '</div>';
+  if (d.verify_failed > 0) html += '<div class="dash-stat" style="color:var(--warn-fg)"><b>' + d.verify_failed + '</b> verify 失败</div>';
+  $('#dashBox').innerHTML = html;
+}
+
+async function loadMemList() {
+  const params = new URLSearchParams();
+  if (libType) params.set('type', libType);
+  if ($('#libStatus').value) params.set('status', $('#libStatus').value);
+  if ($('#libTrust').value) params.set('trust', $('#libTrust').value);
+  const q = $('#libSearch').value.trim();
+  if (q) params.set('q', q);
+  let d;
+  try { d = await api('/api/memories?' + params.toString()); } catch (e) {
+    $('#libList').innerHTML = '<div class="card"><p class="hint">加载失败: ' + esc(e.message) + '</p></div>';
+    return;
+  }
+  renderTypeChips();
+  const box = $('#libList');
+  if (!(d.memories || []).length) {
+    box.innerHTML = '<div class="card"><p class="hint">无匹配记忆——调整筛选或清除</p></div>';
+    return;
+  }
+  const groups = {};
+  for (const m of d.memories) { (groups[m.type] = groups[m.type] || []).push(m); }
+  let html = '';
+  for (const [t, list] of Object.entries(groups)) {
+    html += '<div class="card"><h2>' + esc(t) + '（' + list.length + '）</h2>';
+    for (const m of list) {
+      const retired = m.status !== 'active';
+      html += '<div class="lib-mem' + (retired ? ' retired' : '') + '" data-id="' + esc(m.id) + '">'
+        + '<div class="lbar" style="background:' + typeColor(m.type) + '"></div>'
+        + '<div class="head"><span class="tag trust-' + esc(m.trust) + '">' + esc(m.trust) + '</span>'
+        + '<span class="tag">' + esc(m.facet) + '</span>'
+        + (retired ? '<span style="color:var(--text-3)">' + esc(m.status) + '</span>' : '')
+        + (m.verify ? '<span class="tag">verify:' + esc(m.verify) + '</span>' : '')
+        + (m.expires ? '<span>ephemeral</span>' : '')
+        + '<span>' + esc((m.captured_at || '').slice(0, 10)) + '</span></div>'
+        + '<div class="body">' + esc(m.body) + '</div>'
+        + '<div class="prov">' + esc(m.origin || '') + ' · ' + esc(m.id) + '</div></div>';
+    }
+    html += '</div>';
+  }
+  box.innerHTML = html;
+  $$('#libList .lib-mem').forEach(el => el.onclick = () => openDrawer(el.dataset.id, true));
+}
+
+function renderTypeChips() {
+  const allTypes = ['preference', 'procedural', 'decision', 'semantic', 'episodic'];
+  let html = '<span class="chip-btn' + (libType === '' ? ' on' : '') + '" data-t="">全部</span>';
+  for (const t of allTypes) html += '<span class="chip-btn' + (libType === t ? ' on' : '') + '" data-t="' + t + '">' + t + '</span>';
+  $('#typeChips').innerHTML = html;
+  $$('#typeChips .chip-btn').forEach(el => el.onclick = () => { libType = el.dataset.t; loadMemList(); });
+}
+
+$('#libStatus').onchange = loadMemList;
+$('#libTrust').onchange = loadMemList;
+let libSearchTimer;
+$('#libSearch').addEventListener('input', () => { clearTimeout(libSearchTimer); libSearchTimer = setTimeout(loadMemList, 300); });
+
+async function memoryLifecycle(endpoint, id, reason) {
+  try {
+    const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, reason }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    toast('✓ 操作成功（git 提交已落）');
+    closeDrawer();
+    loadLibrary();
+  } catch (e) { toast('✗ ' + esc(e.message), true); }
+}
+
+function showRetireConfirm(id, body) {
+  closeDrawer();
+  const box = $('#libList');
+  box.insertAdjacentHTML('afterbegin',
+    '<div class="confirm-box" id="retireBox">退休这条记忆？<b>' + esc(body.slice(0, 60)) + '</b>'
+    + '<div class="sub">退出检索，git 历史保留，可重新激活。</div>'
+    + '<input id="retireReason" placeholder="退休理由（进审计）" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface);color:var(--text)">'
+    + '<div style="display:flex;gap:8px;margin-top:10px"><button class="act danger" id="retireGo">确认退休</button><button class="act" id="retireCancel">取消</button></div></div>');
+  $('#retireCancel').onclick = () => $('#retireBox').remove();
+  $('#retireGo').onclick = () => memoryLifecycle('/api/memory/retire', id, $('#retireReason').value.trim());
+}
+
+function showSupersedePanel(id, oldBody, oldType) {
+  closeDrawer();
+  const box = $('#libList');
+  box.insertAdjacentHTML('afterbegin',
+    '<div class="supersede-panel" id="supBox"><b>提出新版本</b>（替代 ' + esc(id) + '）'
+    + '<div style="font-size:12px;color:var(--text-3);margin-top:2px">旧版本 promote 后退出检索，git 历史完整保留</div>'
+    + '<div style="margin-top:8px;font-size:12px;color:var(--text-2)">旧：' + esc(oldBody.slice(0, 80)) + '</div>'
+    + '<textarea id="supBody" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text);min-height:56px"></textarea>'
+    + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">'
+    + '<select id="supType" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text)">'
+    + ['preference', 'procedural', 'decision', 'semantic', 'episodic'].map(t => '<option value="' + t + '"' + (t === oldType ? ' selected' : '') + '>' + t + '</option>').join('')
+    + '</select><span style="flex:1"></span>'
+    + '<button class="act" id="supCancel">取消</button>'
+    + '<button class="act primary" id="supGo">提交到 inbox 审收</button></div></div>');
+  $('#supCancel').onclick = () => $('#supBox').remove();
+  $('#supGo').onclick = async () => {
+    const body = $('#supBody').value.trim();
+    if (!body) { toast('正文不能为空', true); return; }
+    try {
+      const r = await fetch('/api/propose', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body, type: $('#supType').value, supersedes: id }) });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error);
+      toast('✓ 替代提案已入 inbox（批次 ' + (j.data && j.data.batch) + '）——去审收面采纳');
+      $('#supBox').remove();
+      switchTab('review');
+    } catch (e) { toast('✗ ' + esc(e.message), true); }
+  };
 }
 
 /* ── A2 真源路径点击复制 ── */

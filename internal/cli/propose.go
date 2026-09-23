@@ -18,6 +18,7 @@ var propFlags struct {
 	quote           string
 	ephemeral       bool
 	verifyCondition string
+	supersedes      string // 替代指定记忆（promote 时旧条退出检索，git 历史保留）
 }
 
 // propose 显式记忆提案（FR-CAP-4「现在就记」）：人面通道 → inbox 待审
@@ -66,6 +67,17 @@ var proposeCmd = &cobra.Command{
 		}
 		cand.Version = store.FormatVersion
 		cand.Body = body
+		if propFlags.supersedes != "" {
+			// 替代提案：旧记忆必须存在且当前 active（替代已退休/已替代的是错误操作）
+			old, err := st.GetMemory(propFlags.supersedes)
+			if err != nil {
+				return fail(fmt.Errorf("--supersedes 指定的记忆不存在: %s", propFlags.supersedes))
+			}
+			if old.Status != store.StatusActive {
+				return fail(fmt.Errorf("--supersedes 指定的记忆状态为 %s（仅 active 可被替代）", old.Status))
+			}
+			cand.Supersedes = propFlags.supersedes
+		}
 
 		batchID, ids, err := in.AddBatch("manual", []*inbox.Candidate{cand})
 		if err != nil {
@@ -101,5 +113,6 @@ func init() {
 	proposeCmd.Flags().StringVar(&propFlags.quote, "quote", "", "原文摘录（缺省用 content）")
 	proposeCmd.Flags().BoolVar(&propFlags.ephemeral, "ephemeral", false, "临时记忆（7 天自动过期）")
 	proposeCmd.Flags().StringVar(&propFlags.verifyCondition, "verify-condition", "", "失效条件（path-exists:<p> / file-contains:<p>::<t> / 自然语言待人判）")
+	proposeCmd.Flags().StringVar(&propFlags.supersedes, "supersedes", "", "替代指定记忆 id（promote 时旧条退出检索，git 历史保留——原件不可变下的正确修改）")
 	rootCmd.AddCommand(proposeCmd)
 }
