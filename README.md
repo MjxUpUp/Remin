@@ -11,7 +11,7 @@
 
 命名约定：产品 `Remin`（中文：随忆）｜ CLI 与二进制 `remin` ｜ 存储目录 `~/.remin/` ｜ MCP server 别名 `memory` ｜ 工具前缀 `memory_*`
 
-> **当前状态（2026-09-22）**：v0.2.0 重建 + v0.3.x 生命周期 + v0.4.0 深度提取/引导体验之上，v0.5.0 落地路线图全部六项（闲时 tick、多格式适配器、live parity、uplift 评测、笔记桥、审收 Web 界面）+ 弃权词级判据修复。端到端演练（`scripts/e2e-drill.sh`）20 步全通；全量测试 + `-race` + `make constitution` 全绿；live parity 真机证据：claude 通道通过。
+> **当前状态（2026-09-23）**：v0.5.0 路线图六项之上，v0.6.0 落地 remin ui v2 交互迭代（11 项原型确认）、启发式提取精度修正（噪声 -46%）、agent headless 深提取引擎（本机 agent 零配置第一优先级）。端到端演练（`scripts/e2e-drill.sh`）20 步全通；全量测试 + `-race` + `make constitution` 全绿；live parity 真机证据：claude 通道通过。
 
 ## 安装与快速开始
 
