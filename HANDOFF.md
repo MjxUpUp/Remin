@@ -45,9 +45,21 @@
 - M6 文档一致性守卫：下次发布前建议建 docs-consistency-guard 自动化测试（本次 GO-WITH-RISK 注记）。
 - hazard 台账待用户核查清账（`forge hazard confirm --last`）。
 
+## feat/ui-v2（2026-09-23，追加）
+
+- **remin ui 交互迭代**：11 项原型确认全数落地（三栏工作台/状态带/键盘审收流 j·k·a·r·?/
+  类型色条+原话折叠/拒绝二次确认+类型下拉/回执带 commit 归因/弃权可解释/全貌抽屉/
+  趋势迷你图/亮暗双主题）；已合 main（006125d）。
+- 流程：prototype-confirmation 门（用户导出 11/11 ✅）→ TDD → 真实浏览器全项冒烟
+  （两帧亮暗截图存档）→ 对抗审查 0 P1 0 P2 10 P3 全修 → doc-review 两轮（90→95）。
+- **冒烟抓出并修掉三个 v0 静默缺陷**：`/api/batch` 候选 Go 字段名直出（单条按钮静默失效）、
+  `/api/reject` 回执形状、`/api/memory` supersession 链键名反写（v0 潜伏未发）。
+- 设计存档：`prototype-remin-ui.html`（未入库，会话工作区根目录）。
+
 ## 下一步（无待执行代码任务——推到无可做位置）
 
-1. 用户实测反馈回路：`remin ui` 交互迭代（范式级需用户拍板）、bridge 真凭据 live 验证、
-   uplift 任务集随使用沉淀（`eval uplift --record` 逐次累积衰减曲线）。
+1. 用户实测反馈回路：ui v2 试用反馈（已按 11 项确认交付，新范式改动仍需用户拍板）、
+   bridge 真凭据 live 验证、uplift 任务集随使用沉淀（`eval uplift --record` 逐次累积）。
 2. 可选增强（无阻塞）：M6 文档守卫自动化；`remin upgrade` 版本钉扎（回滚更顺）；
    深路径 LLM 自动触发实测（`tick schedule install` 已可装）。
+3. ui v2 在 [Unreleased]，随下个版本发布（v0.5.1/v0.6.0）。
