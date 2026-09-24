@@ -11,7 +11,7 @@
 
 命名约定：产品 `Remin`（中文：随忆）｜ CLI 与二进制 `remin` ｜ 存储目录 `~/.remin/` ｜ MCP server 别名 `memory` ｜ 工具前缀 `memory_*`
 
-> **当前状态（2026-09-23）**：v0.5.0 路线图六项之上，v0.6.0 落地 remin ui v2 交互迭代（11 项原型确认）、启发式提取精度修正（噪声 -46%）、agent headless 深提取引擎（本机 agent 零配置第一优先级）。端到端演练（`scripts/e2e-drill.sh`）20 步全通；全量测试 + `-race` + `make constitution` 全绿；live parity 真机证据：claude 通道通过。
+> **当前状态（2026-09-24）**：v0.6.0 之上，v0.6.1 落地记忆管理面（记忆库浏览/全生命周期看板/supersede 修改流/退休）。端到端演练（`scripts/e2e-drill.sh`）20 步全通；全量测试 + `-race` + `make constitution` 全绿；live parity 真机证据：claude 通道通过。
 
 ## 安装与快速开始
 
@@ -103,7 +103,7 @@ remin search "部署 注意事项"      # 确定性 BM25 检索（trust/provenan
 | `remin eval history [--limit N]` | 查看实测历史与趋势（各次 recall + 相对首跑/上跑 Δ，衰减一眼可见） |
 | `remin bridge pull --from notion\|feishu [--apply]` | 笔记桥摄取：Notion 父页子页 / 飞书 wiki 文档 → markdown → importer human-verified 通道（幂等指纹；默认 dry-run，`--apply` 写 inbox）；零 SDK（stdlib 直连），密钥只走 `REMIN_NOTION_TOKEN` / `REMIN_FEISHU_APP_ID`+`REMIN_FEISHU_APP_SECRET` 环境变量（目标 ID 配 config `bridge:` 节） |
 | `remin bridge push --to notion\|feishu [--facet] [--dry-run]` | 记忆视图单向发布：view 投影 → 平台新页面（heading/段落/列表块；只创建不回写既有页面——视图是真源派生物）；`--dry-run` 只报告 |
-| `remin ui [--port N] [--no-open]` | 本地 Web 界面（仅绑 127.0.0.1；双面——**审收**（v2：三栏工作台/状态带/键盘审收流 `j/k/a/r/?`/类型色条/拒绝二次确认+类型分诊/commit 归因回执/弃权可解释/全貌抽屉/趋势迷你图/双主题）+ **记忆库**（记忆浏览+全生命周期看板/类型筛选+状态/信任过滤/正文搜索/supersede 修改流（提出新版本→inbox 审收→promote 替换）/退休（退出检索+理由进审计+可重新激活））；`propose --supersedes` CLI 同语义；写操作三层防线+WithRoot；零前端依赖内嵌单页） |
+| `remin ui [--port N] [--no-open]` | 本地 Web 界面（仅绑 127.0.0.1；双面——**审收**（v2：三栏工作台/状态带/键盘审收流 `j/k/a/r/?`/类型色条/拒绝二次确认+类型分诊/commit 归因回执/弃权可解释/全貌抽屉/趋势迷你图/双主题）+ **记忆库**（记忆浏览+全生命周期看板/类型筛选+状态/信任过滤/正文搜索/supersede 修改流（提出新版本→inbox 审收→promote 替换）/退休（退出检索+理由入 git 与 Provenance 尾注+可重新激活））；`propose --supersedes` CLI 同语义；写操作三层防线+WithRoot；零前端依赖内嵌单页） |
 | `remin mcp` | MCP stdio server（客户端拉起，别名 memory） |
 | `remin upgrade [--check]` | 自更新：npm registry → sha512 校验 → 原子替换落位；--check 只查不动 |
 | `remin uninstall [--purge]` | 按台账回放摘除全部接线与备份；--purge 连记忆真源一并删除 |
