@@ -1,5 +1,5 @@
 BINARY := bin/remin
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.6.0)
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.6.1)
 
 .PHONY: build test race vet constitution adapter-budget clean
 
